@@ -73,16 +73,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ==========================================
 
     if text == "➕ إضافة قائمة":
+
         context.user_data["adding_menu"] = True
 
         await update.message.reply_text(
             "➕ إضافة قائمة\n\n"
             "أرسل اسم القائمة الجديدة:"
         )
+
         return
 
     # ==========================================
-    # حفظ القائمة الجديدة
+    # حفظ القائمة الرئيسية
     # ==========================================
 
     if context.user_data.get("adding_menu"):
@@ -107,6 +109,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ تم إنشاء القائمة بنجاح\n\n"
             f"📁 {text}"
         )
+
         return
 
     # ==========================================
@@ -128,17 +131,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         menus = cursor.fetchall()
+
         connection.close()
 
         if not menus:
+
             await update.message.reply_text(
                 "📋 لا توجد قوائم منشأة حتى الآن."
             )
+
             return
 
         keyboard = []
 
         for menu in menus:
+
             keyboard.append(
                 [f"📁 {menu['name']}"]
             )
@@ -155,100 +162,117 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-   # ==========================================
-# فتح القائمة وإظهار محتوياتها
-# ==========================================
+    # ==========================================
+    # فتح القائمة وإظهار الفروع
+    # ==========================================
 
-if text.startswith("📁 "):
+    if text.startswith("📁 "):
 
-    menu_name = text[2:].strip()
+        menu_name = text[2:].strip()
 
-    connection = get_connection()
-    cursor = connection.cursor()
+        connection = get_connection()
+        cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        SELECT id, name
-        FROM menus
-        WHERE name = ?
-        ORDER BY id DESC
-        LIMIT 1
-        """,
-        (menu_name,),
-    )
+        cursor.execute(
+            """
+            SELECT id, name, parent_id
+            FROM menus
+            WHERE name = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (menu_name,),
+        )
 
-    menu = cursor.fetchone()
+        menu = cursor.fetchone()
 
-    if not menu:
+        if not menu:
+
+            connection.close()
+
+            await update.message.reply_text(
+                "❌ لم يتم العثور على هذه القائمة."
+            )
+
+            return
+
+        menu_id = menu["id"]
+
+        context.user_data["current_menu_id"] = menu_id
+
+        # جلب الفروع داخل القائمة
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM menus
+            WHERE parent_id = ?
+            ORDER BY sort_order, id
+            """,
+            (menu_id,),
+        )
+
+        branches = cursor.fetchall()
+
         connection.close()
 
+        keyboard = []
+
+        # عرض الفروع
+        for branch in branches:
+
+            keyboard.append(
+                [f"📁 {branch['name']}"]
+            )
+
+        # خيارات الإدارة
+        keyboard.append(
+            ["➕ إضافة فرع"]
+        )
+
+        keyboard.append(
+            ["📝 إضافة نص"]
+        )
+
+        keyboard.append(
+            ["🖼️ إضافة صورة"]
+        )
+
+        keyboard.append(
+            ["🎬 إضافة فيديو"]
+        )
+
+        keyboard.append(
+            ["◀️ رجوع"]
+        )
+
         await update.message.reply_text(
-            "❌ لم يتم العثور على هذه القائمة."
+            f"📁 {menu['name']}\n\n"
+            "اختر من الفروع أو من خيارات الإدارة:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                is_persistent=True,
+            ),
         )
 
         return
 
-    menu_id = menu["id"]
-
-    context.user_data["current_menu_id"] = menu_id
-
-    # جلب الفروع الموجودة داخل القائمة
-    cursor.execute(
-        """
-        SELECT id, name
-        FROM menus
-        WHERE parent_id = ?
-        ORDER BY sort_order, id
-        """,
-        (menu_id,),
-    )
-
-    branches = cursor.fetchall()
-
-    connection.close()
-
-    keyboard = []
-
-    # عرض الفروع
-    for branch in branches:
-        keyboard.append(
-            [f"📁 {branch['name']}"]
-        )
-
-    # أزرار الإدارة
-    keyboard.extend(
-        [
-            ["➕ إضافة فرع"],
-            ["📝 إضافة نص"],
-            ["🖼️ إضافة صورة"],
-            ["🎬 إضافة فيديو"],
-            ["◀️ رجوع"],
-        ]
-    )
-
-    await update.message.reply_text(
-        f"📁 {menu['name']}\n\n"
-        "اختر من الفروع أو من خيارات الإدارة:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True,
-            is_persistent=True,
-        ),
-    )
-
-    return
     # ==========================================
-    # إضافة فرع للقائمة الحالية
+    # إضافة فرع
     # ==========================================
 
     if text == "➕ إضافة فرع":
 
-        current_menu_id = context.user_data.get("current_menu_id")
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
+        )
 
         if not current_menu_id:
+
             await update.message.reply_text(
                 "❌ لم يتم تحديد القائمة الحالية."
             )
+
             return
 
         context.user_data["adding_branch"] = True
@@ -261,12 +285,14 @@ if text.startswith("📁 "):
         return
 
     # ==========================================
-    # حفظ الفرع الجديد
+    # حفظ الفرع
     # ==========================================
 
     if context.user_data.get("adding_branch"):
 
-        current_menu_id = context.user_data.get("current_menu_id")
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
+        )
 
         connection = get_connection()
         cursor = connection.cursor()
@@ -290,8 +316,37 @@ if text.startswith("📁 "):
         )
 
         return
+
     # ==========================================
-    # القوائم العامة للبوت
+    # رجوع
+    # ==========================================
+
+    if text == "◀️ رجوع":
+
+        context.user_data.pop(
+            "current_menu_id",
+            None
+        )
+
+        keyboard = ReplyKeyboardMarkup(
+            [
+                ["➕ إضافة قائمة"],
+                ["📋 إدارة القوائم"],
+            ],
+            resize_keyboard=True,
+            is_persistent=True,
+        )
+
+        await update.message.reply_text(
+            "⚙️ لوحة تحكم المشرف\n\n"
+            "اختر العملية التي تريد تنفيذها:",
+            reply_markup=keyboard,
+        )
+
+        return
+
+    # ==========================================
+    # القوائم العامة
     # ==========================================
 
     if text == "📖 القرآن والثقافة":
@@ -326,24 +381,36 @@ if text.startswith("📁 "):
 def main():
 
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN غير موجود")
+        raise ValueError(
+            "BOT_TOKEN غير موجود"
+        )
 
     if not ADMIN_ID:
-        raise ValueError("ADMIN_ID غير موجود")
+        raise ValueError(
+            "ADMIN_ID غير موجود"
+        )
 
     print(
         "🚀 Huda People Bot is starting...",
         flush=True,
     )
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(
+        BOT_TOKEN
+    ).build()
 
     app.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
     app.add_handler(
-        CommandHandler("admin", admin)
+        CommandHandler(
+            "admin",
+            admin
+        )
     )
 
     app.add_handler(
