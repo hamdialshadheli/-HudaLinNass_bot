@@ -39,7 +39,7 @@ initialize_database()
 
 
 # =========================================================
-# لوحة المستخدم الرئيسية
+# لوحة المستخدم
 # =========================================================
 
 MAIN_KEYBOARD = [
@@ -51,10 +51,11 @@ MAIN_KEYBOARD = [
 
 
 # =========================================================
-# لوحة المشرف
+# لوحة الإدارة
 # =========================================================
 
 def admin_keyboard():
+
     return ReplyKeyboardMarkup(
         [
             ["➕ إضافة قائمة"],
@@ -65,7 +66,25 @@ def admin_keyboard():
 
 
 # =========================================================
-# لوحة إدارة القائمة
+# أيقونة نوع المجموعة
+# =========================================================
+
+def media_group_icon(media_type):
+
+    icons = {
+        "photo": "🖼️",
+        "video": "🎬",
+        "audio": "🎵",
+    }
+
+    return icons.get(
+        media_type,
+        "📦"
+    )
+
+
+# =========================================================
+# لوحة القائمة
 # =========================================================
 
 def menu_keyboard(menu_id):
@@ -73,7 +92,10 @@ def menu_keyboard(menu_id):
     connection = get_connection()
     cursor = connection.cursor()
 
+    # -----------------------------------------------------
     # الفروع
+    # -----------------------------------------------------
+
     cursor.execute(
         """
         SELECT id, name
@@ -86,7 +108,10 @@ def menu_keyboard(menu_id):
 
     menus = cursor.fetchall()
 
-    # المحتويات
+    # -----------------------------------------------------
+    # المحتويات الفردية
+    # -----------------------------------------------------
+
     cursor.execute(
         """
         SELECT id, title, content_type
@@ -99,22 +124,39 @@ def menu_keyboard(menu_id):
 
     contents = cursor.fetchall()
 
+    # -----------------------------------------------------
+    # مجموعات الوسائط
+    # -----------------------------------------------------
+
+    cursor.execute(
+        """
+        SELECT id, title, media_type
+        FROM media_groups
+        WHERE menu_id = ?
+        ORDER BY sort_order, id
+        """,
+        (menu_id,)
+    )
+
+    groups = cursor.fetchall()
+
     connection.close()
 
     keyboard = []
 
-    # -----------------------------
+    # -----------------------------------------------------
     # الفروع
-    # -----------------------------
+    # -----------------------------------------------------
 
     for menu in menus:
+
         keyboard.append(
             [f"📂 {menu['name']}"]
         )
 
-    # -----------------------------
-    # المحتويات
-    # -----------------------------
+    # -----------------------------------------------------
+    # المحتويات الفردية
+    # -----------------------------------------------------
 
     icons = {
         "text": "📝",
@@ -131,20 +173,38 @@ def menu_keyboard(menu_id):
         )
 
         keyboard.append(
-            [f"{icon} {content['title']}"]
+            [
+                f"{icon} {content['title']}"
+            ]
         )
 
-    # -----------------------------
-    # الإدارة
-    # -----------------------------
+    # -----------------------------------------------------
+    # مجموعات الوسائط
+    # -----------------------------------------------------
+
+    for group in groups:
+
+        icon = media_group_icon(
+            group["media_type"]
+        )
+
+        keyboard.append(
+            [
+                f"{icon} {group['title']}"
+            ]
+        )
+
+    # -----------------------------------------------------
+    # أدوات الإدارة
+    # -----------------------------------------------------
 
     keyboard.extend(
         [
             ["➕ إضافة فرع"],
             ["📝 إضافة نص"],
-            ["🖼️ إضافة صورة"],
-            ["🎬 إضافة فيديو"],
-            ["🎵 إضافة صوت"],
+            ["🖼️ إضافة صور متعددة"],
+            ["🎬 إضافة فيديوهات متعددة"],
+            ["🎵 إضافة أصوات متعددة"],
             ["◀️ رجوع"],
         ]
     )
@@ -160,8 +220,8 @@ def menu_keyboard(menu_id):
 # =========================================================
 
 async def show_menu(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    update,
+    context,
     menu_id
 ):
 
@@ -182,17 +242,26 @@ async def show_menu(
     connection.close()
 
     if not menu:
+
         await update.message.reply_text(
             "❌ القائمة غير موجودة."
         )
+
         return
 
-    context.user_data["current_menu_id"] = menu["id"]
-    context.user_data["current_menu_name"] = menu["name"]
+    context.user_data[
+        "current_menu_id"
+    ] = menu["id"]
+
+    context.user_data[
+        "current_menu_name"
+    ] = menu["name"]
 
     await update.message.reply_text(
         f"📂 {menu['name']}",
-        reply_markup=menu_keyboard(menu["id"])
+        reply_markup=menu_keyboard(
+            menu["id"]
+        )
     )
 
 
@@ -225,12 +294,14 @@ async def admin(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    user_id = str(update.effective_user.id)
+    user_id = str(
+        update.effective_user.id
+    )
 
     if user_id != str(ADMIN_ID):
 
         await update.message.reply_text(
-            "❌ ليس لديك صلاحية الدخول إلى لوحة الإدارة."
+            "❌ ليس لديك صلاحية الدخول."
         )
 
         return
@@ -244,17 +315,101 @@ async def admin(
 
 
 # =========================================================
-# حفظ المحتوى
+# إنشاء مجموعة وسائط
 # =========================================================
 
-def save_content(
+def create_media_group(
     menu_id,
     title,
-    content_type,
-    text_content=None,
-    file_id=None,
-    caption=None,
-    description=None
+    description,
+    media_type
+):
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO media_groups (
+            menu_id,
+            title,
+            description,
+            media_type
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            menu_id,
+            title,
+            description,
+            media_type
+        )
+    )
+
+    group_id = cursor.lastrowid
+
+    connection.commit()
+    connection.close()
+
+    return group_id
+
+
+# =========================================================
+# إضافة ملف إلى مجموعة
+# =========================================================
+
+def add_media_item(
+    group_id,
+    file_id,
+    caption=None
+):
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM media_group_items
+        WHERE group_id = ?
+        """,
+        (group_id,)
+    )
+
+    result = cursor.fetchone()
+
+    sort_order = result["total"]
+
+    cursor.execute(
+        """
+        INSERT INTO media_group_items (
+            group_id,
+            file_id,
+            caption,
+            sort_order
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            group_id,
+            file_id,
+            caption,
+            sort_order
+        )
+    )
+
+    connection.commit()
+    connection.close()
+
+
+# =========================================================
+# حفظ نص
+# =========================================================
+
+def save_text(
+    menu_id,
+    title,
+    text_content
 ):
 
     connection = get_connection()
@@ -266,21 +421,14 @@ def save_content(
             menu_id,
             title,
             content_type,
-            text_content,
-            file_id,
-            caption,
-            description
+            text_content
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, 'text', ?)
         """,
         (
             menu_id,
             title,
-            content_type,
-            text_content,
-            file_id,
-            caption,
-            description
+            text_content
         )
     )
 
@@ -289,129 +437,71 @@ def save_content(
 
 
 # =========================================================
-# البحث عن القائمة
+# إرسال محتوى فردي
 # =========================================================
 
-def find_menu(menu_name):
-
-    connection = get_connection()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT *
-        FROM menus
-        WHERE name = ?
-        LIMIT 1
-        """,
-        (menu_name,)
-    )
-
-    menu = cursor.fetchone()
-
-    connection.close()
-
-    return menu
-
-
-# =========================================================
-# البحث عن المحتوى
-# =========================================================
-
-def find_content(title):
-
-    connection = get_connection()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT *
-        FROM contents
-        WHERE title = ?
-        LIMIT 1
-        """,
-        (title,)
-    )
-
-    content = cursor.fetchone()
-
-    connection.close()
-
-    return content
-
-
-# =========================================================
-# إرسال المحتوى
-# =========================================================
-
-async def send_content(
-    update: Update,
+async def send_single_content(
+    update,
     content
 ):
 
     description = content["description"]
 
-    # -----------------------------------------
-    # النص
-    # -----------------------------------------
-
     if content["content_type"] == "text":
 
-        text = content["text_content"] or ""
+        message = content["text_content"] or ""
 
         if description:
-            text = (
+
+            message = (
                 f"📝 {content['title']}\n\n"
                 f"{description}\n\n"
-                f"{text}"
+                f"{message}"
             )
 
         await update.message.reply_text(
-            text
+            message
         )
-
-    # -----------------------------------------
-    # الصورة
-    # -----------------------------------------
 
     elif content["content_type"] == "photo":
 
         caption = f"🖼️ {content['title']}"
 
         if description:
-            caption += f"\n\n📝 {description}"
+
+            caption += (
+                f"\n\n📝 {description}"
+            )
 
         await update.message.reply_photo(
             photo=content["file_id"],
             caption=caption
         )
 
-    # -----------------------------------------
-    # الفيديو
-    # -----------------------------------------
-
     elif content["content_type"] == "video":
 
         caption = f"🎬 {content['title']}"
 
         if description:
-            caption += f"\n\n📝 {description}"
+
+            caption += (
+                f"\n\n📝 {description}"
+            )
 
         await update.message.reply_video(
             video=content["file_id"],
             caption=caption
         )
 
-    # -----------------------------------------
-    # الصوت
-    # -----------------------------------------
-
     elif content["content_type"] == "audio":
 
         caption = f"🎵 {content['title']}"
 
         if description:
-            caption += f"\n\n📝 {description}"
+
+            caption += (
+                f"\n\n📝 {description}"
+            )
 
         await update.message.reply_audio(
             audio=content["file_id"],
@@ -420,124 +510,391 @@ async def send_content(
 
 
 # =========================================================
-# معالجة الرسائل
+# إرسال مجموعة وسائط
 # =========================================================
 
-async def handle_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+async def send_media_group(
+    update,
+    group
+):
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM media_group_items
+        WHERE group_id = ?
+        ORDER BY sort_order, id
+        """,
+        (group["id"],)
+    )
+
+    items = cursor.fetchall()
+
+    connection.close()
+
+    if not items:
+
+        await update.message.reply_text(
+            "❌ هذه المجموعة لا تحتوي على ملفات."
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # شرح المجموعة
+    # -----------------------------------------------------
+
+    if group["description"]:
+
+        await update.message.reply_text(
+            f"📌 {group['title']}\n\n"
+            f"📝 {group['description']}"
+        )
+
+    # -----------------------------------------------------
+    # الصور
+    # -----------------------------------------------------
+
+    if group["media_type"] == "photo":
+
+        for item in items:
+
+            await update.message.reply_photo(
+                photo=item["file_id"]
+            )
+
+    # -----------------------------------------------------
+    # الفيديوهات
+    # -----------------------------------------------------
+
+    elif group["media_type"] == "video":
+
+        for item in items:
+
+            await update.message.reply_video(
+                video=item["file_id"]
+            )
+
+    # -----------------------------------------------------
+    # الأصوات
+    # -----------------------------------------------------
+
+    elif group["media_type"] == "audio":
+
+        for item in items:
+
+            await update.message.reply_audio(
+                audio=item["file_id"]
+            )
+
+
+# =========================================================
+# استقبال النصوص
+# =========================================================
+
+async def handle_text(
+    update,
+    context
 ):
 
     text = update.message.text
 
-    user_id = str(update.effective_user.id)
+    user_id = str(
+        update.effective_user.id
+    )
 
     is_admin = (
         user_id == str(ADMIN_ID)
     )
 
     # =====================================================
-    # زر الرجوع
+    # إنهاء مجموعة
     # =====================================================
 
-    if text == "◀️ رجوع":
+    if (
+        is_admin
+        and text == "✅ إنهاء"
+        and context.user_data.get(
+            "creating_media_group"
+        )
+    ):
 
-        # إلغاء أي عملية إضافة
-        context.user_data.pop(
-            "waiting_for_menu_name",
-            None
+        group_id = context.user_data.get(
+            "media_group_id"
         )
 
-        context.user_data.pop(
-            "waiting_for_branch_name",
-            None
+        total = context.user_data.get(
+            "media_group_count",
+            0
         )
 
-        context.user_data.pop(
-            "waiting_for_text_title",
-            None
-        )
+        if total == 0:
 
-        context.user_data.pop(
-            "waiting_for_text_content",
-            None
-        )
+            await update.message.reply_text(
+                "❌ لم يتم إضافة أي ملف."
+            )
 
-        context.user_data.pop(
-            "waiting_for_photo_title",
-            None
-        )
+            return
 
-        context.user_data.pop(
-            "waiting_for_photo_description",
-            None
-        )
-
-        context.user_data.pop(
-            "waiting_for_video_title",
-            None
-        )
-
-        context.user_data.pop(
-            "waiting_for_video_description",
-            None
-        )
-
-        context.user_data.pop(
-            "waiting_for_audio_title",
-            None
-        )
-
-        context.user_data.pop(
-            "waiting_for_audio_description",
-            None
-        )
-
-        current_menu_id = context.user_data.get(
+        menu_id = context.user_data.get(
             "current_menu_id"
         )
 
-        if current_menu_id:
+        context.user_data.pop(
+            "creating_media_group",
+            None
+        )
 
-            connection = get_connection()
-            cursor = connection.cursor()
+        context.user_data.pop(
+            "media_group_id",
+            None
+        )
 
-            cursor.execute(
-                """
-                SELECT parent_id
-                FROM menus
-                WHERE id = ?
-                """,
-                (current_menu_id,)
+        context.user_data.pop(
+            "media_group_count",
+            None
+        )
+
+        await update.message.reply_text(
+            f"✅ تم حفظ المجموعة بنجاح.\n"
+            f"📦 عدد الملفات: {total}",
+            reply_markup=menu_keyboard(
+                menu_id
+            )
+        )
+
+        return
+
+    # =====================================================
+    # إلغاء العملية
+    # =====================================================
+
+    if (
+        is_admin
+        and text == "❌ إلغاء"
+        and context.user_data.get(
+            "creating_media_group"
+        )
+    ):
+
+        context.user_data.pop(
+            "creating_media_group",
+            None
+        )
+
+        context.user_data.pop(
+            "media_group_id",
+            None
+        )
+
+        context.user_data.pop(
+            "media_group_count",
+            None
+        )
+
+        menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        await update.message.reply_text(
+            "❌ تم إلغاء العملية.",
+            reply_markup=menu_keyboard(
+                menu_id
+            )
+        )
+
+        return
+
+    # =====================================================
+    # إنشاء مجموعة صور
+    # =====================================================
+
+    if is_admin and text == "🖼️ إضافة صور متعددة":
+
+        menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        if not menu_id:
+
+            await update.message.reply_text(
+                "❌ افتح قائمة أولًا."
             )
 
-            menu = cursor.fetchone()
+            return
 
-            connection.close()
+        context.user_data[
+            "new_group_type"
+        ] = "photo"
 
-            if menu and menu["parent_id"]:
+        context.user_data[
+            "waiting_group_title"
+        ] = True
 
-                await show_menu(
-                    update,
-                    context,
-                    menu["parent_id"]
-                )
+        await update.message.reply_text(
+            "✏️ أرسل عنوان مجموعة الصور:"
+        )
 
-            else:
+        return
 
-                context.user_data.clear()
+    # =====================================================
+    # إنشاء مجموعة فيديوهات
+    # =====================================================
 
-                await update.message.reply_text(
-                    "⚙️ لوحة إدارة البوت",
-                    reply_markup=admin_keyboard()
-                )
+    if is_admin and text == "🎬 إضافة فيديوهات متعددة":
+
+        menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        if not menu_id:
+
+            await update.message.reply_text(
+                "❌ افتح قائمة أولًا."
+            )
+
+            return
+
+        context.user_data[
+            "new_group_type"
+        ] = "video"
+
+        context.user_data[
+            "waiting_group_title"
+        ] = True
+
+        await update.message.reply_text(
+            "✏️ أرسل عنوان مجموعة الفيديوهات:"
+        )
+
+        return
+
+    # =====================================================
+    # إنشاء مجموعة أصوات
+    # =====================================================
+
+    if is_admin and text == "🎵 إضافة أصوات متعددة":
+
+        menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        if not menu_id:
+
+            await update.message.reply_text(
+                "❌ افتح قائمة أولًا."
+            )
+
+            return
+
+        context.user_data[
+            "new_group_type"
+        ] = "audio"
+
+        context.user_data[
+            "waiting_group_title"
+        ] = True
+
+        await update.message.reply_text(
+            "✏️ أرسل عنوان مجموعة الأصوات:"
+        )
+
+        return
+
+    # =====================================================
+    # عنوان المجموعة
+    # =====================================================
+
+    if is_admin and context.user_data.get(
+        "waiting_group_title"
+    ):
+
+        context.user_data[
+            "new_group_title"
+        ] = text
+
+        context.user_data.pop(
+            "waiting_group_title"
+        )
+
+        context.user_data[
+            "waiting_group_description"
+        ] = True
+
+        await update.message.reply_text(
+            "📝 أرسل شرح المجموعة، "
+            "أو اكتب:\n\nبدون شرح"
+        )
+
+        return
+
+    # =====================================================
+    # وصف المجموعة
+    # =====================================================
+
+    if is_admin and context.user_data.get(
+        "waiting_group_description"
+    ):
+
+        if text == "بدون شرح":
+
+            description = None
 
         else:
 
-            await update.message.reply_text(
-                "⚙️ لوحة إدارة البوت",
-                reply_markup=admin_keyboard()
-            )
+            description = text
+
+        menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        title = context.user_data.get(
+            "new_group_title"
+        )
+
+        media_type = context.user_data.get(
+            "new_group_type"
+        )
+
+        group_id = create_media_group(
+            menu_id,
+            title,
+            description,
+            media_type
+        )
+
+        context.user_data[
+            "media_group_id"
+        ] = group_id
+
+        context.user_data[
+            "media_group_count"
+        ] = 0
+
+        context.user_data[
+            "creating_media_group"
+        ] = True
+
+        context.user_data.pop(
+            "waiting_group_description"
+        )
+
+        keyboard = ReplyKeyboardMarkup(
+            [
+                ["✅ إنهاء"],
+                ["❌ إلغاء"],
+            ],
+            resize_keyboard=True
+        )
+
+        await update.message.reply_text(
+            "📤 الآن أرسل الملفات واحدًا تلو الآخر.\n\n"
+            "عندما تنتهي اضغط «✅ إنهاء».",
+            reply_markup=keyboard
+        )
 
         return
 
@@ -552,7 +909,7 @@ async def handle_message(
         ] = True
 
         await update.message.reply_text(
-            "✏️ أرسل اسم القائمة الجديدة:"
+            "✏️ أرسل اسم القائمة:"
         )
 
         return
@@ -587,7 +944,7 @@ async def handle_message(
         )
 
         await update.message.reply_text(
-            f"✅ تم إنشاء القائمة:\n\n📂 {text}",
+            "✅ تم إنشاء القائمة.",
             reply_markup=admin_keyboard()
         )
 
@@ -628,7 +985,7 @@ async def handle_message(
         )
 
         await update.message.reply_text(
-            "📋 اختر القائمة التي تريد إدارتها:",
+            "📋 اختر القائمة:",
             reply_markup=ReplyKeyboardMarkup(
                 keyboard,
                 resize_keyboard=True
@@ -700,7 +1057,7 @@ async def handle_message(
         )
 
         await update.message.reply_text(
-            f"✅ تم إنشاء الفرع:\n\n📂 {text}",
+            "✅ تم إنشاء الفرع.",
             reply_markup=menu_keyboard(
                 parent_id
             )
@@ -725,7 +1082,7 @@ async def handle_message(
             return
 
         context.user_data[
-            "waiting_for_text_title"
+            "waiting_text_title"
         ] = True
 
         await update.message.reply_text(
@@ -739,7 +1096,7 @@ async def handle_message(
     # =====================================================
 
     if is_admin and context.user_data.get(
-        "waiting_for_text_title"
+        "waiting_text_title"
     ):
 
         context.user_data[
@@ -747,11 +1104,11 @@ async def handle_message(
         ] = text
 
         context.user_data.pop(
-            "waiting_for_text_title"
+            "waiting_text_title"
         )
 
         context.user_data[
-            "waiting_for_text_content"
+            "waiting_text_content"
         ] = True
 
         await update.message.reply_text(
@@ -761,11 +1118,11 @@ async def handle_message(
         return
 
     # =====================================================
-    # محتوى النص
+    # حفظ النص
     # =====================================================
 
     if is_admin and context.user_data.get(
-        "waiting_for_text_content"
+        "waiting_text_content"
     ):
 
         menu_id = context.user_data.get(
@@ -776,15 +1133,14 @@ async def handle_message(
             "new_text_title"
         )
 
-        save_content(
-            menu_id=menu_id,
-            title=title,
-            content_type="text",
-            text_content=text
+        save_text(
+            menu_id,
+            title,
+            text
         )
 
         context.user_data.pop(
-            "waiting_for_text_content"
+            "waiting_text_content"
         )
 
         context.user_data.pop(
@@ -802,446 +1158,72 @@ async def handle_message(
         return
 
     # =====================================================
-    # إضافة صورة
+    # الرجوع
     # =====================================================
 
-    if is_admin and text == "🖼️ إضافة صورة":
+    if text == "◀️ رجوع":
 
-        if not context.user_data.get(
-            "current_menu_id"
-        ):
+        # إلغاء حالات الإدخال
+        for key in [
+            "waiting_for_menu_name",
+            "waiting_for_branch_name",
+            "waiting_text_title",
+            "waiting_text_content",
+            "waiting_group_title",
+            "waiting_group_description",
+            "creating_media_group",
+            "media_group_id",
+            "media_group_count",
+        ]:
 
-            await update.message.reply_text(
-                "❌ افتح قائمة أولًا."
+            context.user_data.pop(
+                key,
+                None
             )
 
-            return
-
-        context.user_data[
-            "waiting_for_photo_title"
-        ] = True
-
-        await update.message.reply_text(
-            "✏️ أرسل عنوان الصورة:"
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
         )
 
-        return
+        if current_menu_id:
 
-    # =====================================================
-    # عنوان الصورة
-    # =====================================================
+            connection = get_connection()
+            cursor = connection.cursor()
 
-    if is_admin and context.user_data.get(
-        "waiting_for_photo_title"
-    ):
+            cursor.execute(
+                """
+                SELECT parent_id
+                FROM menus
+                WHERE id = ?
+                """,
+                (current_menu_id,)
+            )
 
-        context.user_data[
-            "new_photo_title"
-        ] = text
+            menu = cursor.fetchone()
 
-        context.user_data.pop(
-            "waiting_for_photo_title"
-        )
+            connection.close()
 
-        context.user_data[
-            "waiting_for_photo_description"
-        ] = True
+            if menu and menu["parent_id"]:
 
-        await update.message.reply_text(
-            "📝 أرسل شرح الصورة أو اكتب:\n\nبدون شرح"
-        )
+                await show_menu(
+                    update,
+                    context,
+                    menu["parent_id"]
+                )
 
-        return
+            else:
 
-    # =====================================================
-    # وصف الصورة
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_photo_description"
-    ):
-
-        if text == "بدون شرح":
-
-            description = None
+                await update.message.reply_text(
+                    "⚙️ لوحة إدارة البوت",
+                    reply_markup=admin_keyboard()
+                )
 
         else:
 
-            description = text
-
-        context.user_data[
-            "new_photo_description"
-        ] = description
-
-        context.user_data.pop(
-            "waiting_for_photo_description"
-        )
-
-        context.user_data[
-            "waiting_for_photo"
-        ] = True
-
-        await update.message.reply_text(
-            "🖼️ الآن أرسل الصورة:"
-        )
-
-        return
-
-    # =====================================================
-    # استقبال الصورة
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_photo"
-    ):
-
-        if not update.message.photo:
-
             await update.message.reply_text(
-                "❌ أرسل صورة من فضلك."
+                "⚙️ لوحة إدارة البوت",
+                reply_markup=admin_keyboard()
             )
-
-            return
-
-        photo = update.message.photo[-1]
-
-        menu_id = context.user_data.get(
-            "current_menu_id"
-        )
-
-        title = context.user_data.get(
-            "new_photo_title"
-        )
-
-        description = context.user_data.get(
-            "new_photo_description"
-        )
-
-        save_content(
-            menu_id=menu_id,
-            title=title,
-            content_type="photo",
-            file_id=photo.file_id,
-            caption=description,
-            description=description
-        )
-
-        context.user_data.pop(
-            "waiting_for_photo"
-        )
-
-        context.user_data.pop(
-            "new_photo_title",
-            None
-        )
-
-        context.user_data.pop(
-            "new_photo_description",
-            None
-        )
-
-        await update.message.reply_text(
-            "✅ تم حفظ الصورة مع شرحها.",
-            reply_markup=menu_keyboard(
-                menu_id
-            )
-        )
-
-        return
-
-    # =====================================================
-    # إضافة فيديو
-    # =====================================================
-
-    if is_admin and text == "🎬 إضافة فيديو":
-
-        if not context.user_data.get(
-            "current_menu_id"
-        ):
-
-            await update.message.reply_text(
-                "❌ افتح قائمة أولًا."
-            )
-
-            return
-
-        context.user_data[
-            "waiting_for_video_title"
-        ] = True
-
-        await update.message.reply_text(
-            "✏️ أرسل عنوان الفيديو:"
-        )
-
-        return
-
-    # =====================================================
-    # عنوان الفيديو
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_video_title"
-    ):
-
-        context.user_data[
-            "new_video_title"
-        ] = text
-
-        context.user_data.pop(
-            "waiting_for_video_title"
-        )
-
-        context.user_data[
-            "waiting_for_video_description"
-        ] = True
-
-        await update.message.reply_text(
-            "📝 أرسل شرحًا يوضح محتوى الفيديو أو اكتب:\n\nبدون شرح"
-        )
-
-        return
-
-    # =====================================================
-    # وصف الفيديو
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_video_description"
-    ):
-
-        if text == "بدون شرح":
-
-            description = None
-
-        else:
-
-            description = text
-
-        context.user_data[
-            "new_video_description"
-        ] = description
-
-        context.user_data.pop(
-            "waiting_for_video_description"
-        )
-
-        context.user_data[
-            "waiting_for_video"
-        ] = True
-
-        await update.message.reply_text(
-            "🎬 الآن أرسل الفيديو:"
-        )
-
-        return
-
-    # =====================================================
-    # استقبال الفيديو
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_video"
-    ):
-
-        if not update.message.video:
-
-            await update.message.reply_text(
-                "❌ أرسل فيديو من فضلك."
-            )
-
-            return
-
-        video = update.message.video
-
-        menu_id = context.user_data.get(
-            "current_menu_id"
-        )
-
-        title = context.user_data.get(
-            "new_video_title"
-        )
-
-        description = context.user_data.get(
-            "new_video_description"
-        )
-
-        save_content(
-            menu_id=menu_id,
-            title=title,
-            content_type="video",
-            file_id=video.file_id,
-            caption=description,
-            description=description
-        )
-
-        context.user_data.pop(
-            "waiting_for_video"
-        )
-
-        context.user_data.pop(
-            "new_video_title",
-            None
-        )
-
-        context.user_data.pop(
-            "new_video_description",
-            None
-        )
-
-        await update.message.reply_text(
-            "✅ تم حفظ الفيديو مع شرحه.",
-            reply_markup=menu_keyboard(
-                menu_id
-            )
-        )
-
-        return
-
-    # =====================================================
-    # إضافة صوت
-    # =====================================================
-
-    if is_admin and text == "🎵 إضافة صوت":
-
-        if not context.user_data.get(
-            "current_menu_id"
-        ):
-
-            await update.message.reply_text(
-                "❌ افتح قائمة أولًا."
-            )
-
-            return
-
-        context.user_data[
-            "waiting_for_audio_title"
-        ] = True
-
-        await update.message.reply_text(
-            "✏️ أرسل عنوان الصوت:"
-        )
-
-        return
-
-    # =====================================================
-    # عنوان الصوت
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_audio_title"
-    ):
-
-        context.user_data[
-            "new_audio_title"
-        ] = text
-
-        context.user_data.pop(
-            "waiting_for_audio_title"
-        )
-
-        context.user_data[
-            "waiting_for_audio_description"
-        ] = True
-
-        await update.message.reply_text(
-            "📝 أرسل شرحًا للصوت أو اكتب:\n\nبدون شرح"
-        )
-
-        return
-
-    # =====================================================
-    # وصف الصوت
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_audio_description"
-    ):
-
-        if text == "بدون شرح":
-
-            description = None
-
-        else:
-
-            description = text
-
-        context.user_data[
-            "new_audio_description"
-        ] = description
-
-        context.user_data.pop(
-            "waiting_for_audio_description"
-        )
-
-        context.user_data[
-            "waiting_for_audio"
-        ] = True
-
-        await update.message.reply_text(
-            "🎵 الآن أرسل الصوت:"
-        )
-
-        return
-
-    # =====================================================
-    # استقبال الصوت
-    # =====================================================
-
-    if is_admin and context.user_data.get(
-        "waiting_for_audio"
-    ):
-
-        if not update.message.audio:
-
-            await update.message.reply_text(
-                "❌ أرسل ملف صوتي من فضلك."
-            )
-
-            return
-
-        audio = update.message.audio
-
-        menu_id = context.user_data.get(
-            "current_menu_id"
-        )
-
-        title = context.user_data.get(
-            "new_audio_title"
-        )
-
-        description = context.user_data.get(
-            "new_audio_description"
-        )
-
-        save_content(
-            menu_id=menu_id,
-            title=title,
-            content_type="audio",
-            file_id=audio.file_id,
-            caption=description,
-            description=description
-        )
-
-        context.user_data.pop(
-            "waiting_for_audio"
-        )
-
-        context.user_data.pop(
-            "new_audio_title",
-            None
-        )
-
-        context.user_data.pop(
-            "new_audio_description",
-            None
-        )
-
-        await update.message.reply_text(
-            "✅ تم حفظ الصوت مع شرحه.",
-            reply_markup=menu_keyboard(
-                menu_id
-            )
-        )
 
         return
 
@@ -1253,7 +1235,22 @@ async def handle_message(
 
         menu_name = text[2:].strip()
 
-        menu = find_menu(menu_name)
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM menus
+            WHERE name = ?
+            LIMIT 1
+            """,
+            (menu_name,)
+        )
+
+        menu = cursor.fetchone()
+
+        connection.close()
 
         if menu:
 
@@ -1266,14 +1263,59 @@ async def handle_message(
         return
 
     # =====================================================
-    # فتح المحتوى
+    # فتح مجموعة
     # =====================================================
 
-    content = find_content(text)
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM media_groups
+        WHERE title = ?
+        LIMIT 1
+        """,
+        (text,)
+    )
+
+    group = cursor.fetchone()
+
+    connection.close()
+
+    if group:
+
+        await send_media_group(
+            update,
+            group
+        )
+
+        return
+
+    # =====================================================
+    # فتح محتوى فردي
+    # =====================================================
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM contents
+        WHERE title = ?
+        LIMIT 1
+        """,
+        (text,)
+    )
+
+    content = cursor.fetchone()
+
+    connection.close()
 
     if content:
 
-        await send_content(
+        await send_single_content(
             update,
             content
         )
@@ -1299,6 +1341,125 @@ async def handle_message(
 
 
 # =========================================================
+# استقبال الملفات
+# =========================================================
+
+async def handle_media(
+    update,
+    context
+):
+
+    user_id = str(
+        update.effective_user.id
+    )
+
+    is_admin = (
+        user_id == str(ADMIN_ID)
+    )
+
+    # =====================================================
+    # التأكد أن المشرف في وضع إضافة مجموعة
+    # =====================================================
+
+    if not is_admin:
+
+        return
+
+    if not context.user_data.get(
+        "creating_media_group"
+    ):
+
+        await update.message.reply_text(
+            "❌ لا توجد عملية إضافة ملفات قيد التنفيذ."
+        )
+
+        return
+
+    group_id = context.user_data.get(
+        "media_group_id"
+    )
+
+    media_type = context.user_data.get(
+        "new_group_type"
+    )
+
+    file_id = None
+
+    # =====================================================
+    # صورة
+    # =====================================================
+
+    if update.message.photo:
+
+        if media_type != "photo":
+
+            await update.message.reply_text(
+                "❌ هذه المجموعة مخصصة لنوع آخر من الملفات."
+            )
+
+            return
+
+        file_id = update.message.photo[-1].file_id
+
+    # =====================================================
+    # فيديو
+    # =====================================================
+
+    elif update.message.video:
+
+        if media_type != "video":
+
+            await update.message.reply_text(
+                "❌ هذه المجموعة مخصصة لنوع آخر من الملفات."
+            )
+
+            return
+
+        file_id = update.message.video.file_id
+
+    # =====================================================
+    # صوت
+    # =====================================================
+
+    elif update.message.audio:
+
+        if media_type != "audio":
+
+            await update.message.reply_text(
+                "❌ هذه المجموعة مخصصة لنوع آخر من الملفات."
+            )
+
+            return
+
+        file_id = update.message.audio.file_id
+
+    # =====================================================
+    # حفظ الملف
+    # =====================================================
+
+    if file_id:
+
+        add_media_item(
+            group_id,
+            file_id
+        )
+
+        count = context.user_data.get(
+            "media_group_count",
+            0
+        ) + 1
+
+        context.user_data[
+            "media_group_count"
+        ] = count
+
+        await update.message.reply_text(
+            f"✅ تم حفظ الملف رقم {count}.\n"
+            f"📤 يمكنك إرسال الملف التالي أو الضغط على «✅ إنهاء»."
+        )
+
+
+# =========================================================
 # تشغيل البوت
 # =========================================================
 
@@ -1316,10 +1477,7 @@ def main():
         .build()
     )
 
-    # -----------------------------
     # الأوامر
-    # -----------------------------
-
     app.add_handler(
         CommandHandler(
             "start",
@@ -1334,27 +1492,35 @@ def main():
         )
     )
 
-    # -----------------------------
-    # الرسائل النصية
-    # -----------------------------
-
+    # النصوص
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            handle_message
+            handle_text
         )
     )
 
-    # -----------------------------
-    # الصور والفيديو والصوت
-    # -----------------------------
-
+    # الصور
     app.add_handler(
         MessageHandler(
-            filters.PHOTO
-            | filters.VIDEO
-            | filters.AUDIO,
-            handle_message
+            filters.PHOTO,
+            handle_media
+        )
+    )
+
+    # الفيديو
+    app.add_handler(
+        MessageHandler(
+            filters.VIDEO,
+            handle_media
+        )
+    )
+
+    # الصوت
+    app.add_handler(
+        MessageHandler(
+            filters.AUDIO,
+            handle_media
         )
     )
 
