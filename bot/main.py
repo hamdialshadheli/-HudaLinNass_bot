@@ -64,13 +64,39 @@ def admin_keyboard():
 # =========================================================
 
 def media_group_icon(media_type):
+
     icons = {
         "photo": "🖼️",
         "video": "🎬",
         "audio": "🎵",
     }
 
-    return icons.get(media_type, "📦")
+    return icons.get(
+        media_type,
+        "📦"
+    )
+
+# =========================================================
+# إزالة أيقونة الزر
+# =========================================================
+
+def remove_button_icon(text):
+
+    icons = [
+        "📝 ",
+        "🖼️ ",
+        "🎬 ",
+        "🎵 ",
+        "📄 ",
+    ]
+
+    for icon in icons:
+
+        if text.startswith(icon):
+
+            return text[len(icon):]
+
+    return text
 
 # =========================================================
 # لوحة القائمة
@@ -134,16 +160,17 @@ def menu_keyboard(menu_id):
     keyboard = []
 
     # -----------------------------------------------------
-    # عرض الفروع
+    # الفروع
     # -----------------------------------------------------
 
     for menu in menus:
+
         keyboard.append(
             [f"📂 {menu['name']}"]
         )
 
     # -----------------------------------------------------
-    # أيقونات المحتويات الفردية
+    # المحتويات الفردية
     # -----------------------------------------------------
 
     icons = {
@@ -152,10 +179,6 @@ def menu_keyboard(menu_id):
         "video": "🎬",
         "audio": "🎵",
     }
-
-    # -----------------------------------------------------
-    # عرض المحتويات الفردية
-    # -----------------------------------------------------
 
     for content in contents:
 
@@ -169,7 +192,7 @@ def menu_keyboard(menu_id):
         )
 
     # -----------------------------------------------------
-    # عرض مجموعات الوسائط
+    # مجموعات الوسائط
     # -----------------------------------------------------
 
     for group in groups:
@@ -209,7 +232,8 @@ def menu_keyboard(menu_id):
 async def show_menu(
     update,
     context,
-    menu_id
+    menu_id,
+    add_to_stack=True
 ):
 
     connection = get_connection()
@@ -236,6 +260,10 @@ async def show_menu(
 
         return
 
+    # -----------------------------------------------------
+    # حفظ القائمة الحالية
+    # -----------------------------------------------------
+
     context.user_data[
         "current_menu_id"
     ] = menu["id"]
@@ -243,6 +271,32 @@ async def show_menu(
     context.user_data[
         "current_menu_name"
     ] = menu["name"]
+
+    # -----------------------------------------------------
+    # إدارة مسار القوائم
+    # -----------------------------------------------------
+
+    if add_to_stack:
+
+        stack = context.user_data.get(
+            "menu_stack",
+            []
+        )
+
+        # منع تكرار نفس القائمة في المسار
+        if not stack or stack[-1] != menu["id"]:
+
+            stack.append(
+                menu["id"]
+            )
+
+        context.user_data[
+            "menu_stack"
+        ] = stack
+
+    # -----------------------------------------------------
+    # عرض القائمة
+    # -----------------------------------------------------
 
     await update.message.reply_text(
         f"📂 {menu['name']}",
@@ -434,7 +488,10 @@ async def send_single_content(
 
     if content["content_type"] == "text":
 
-        message = content["text_content"] or ""
+        message = (
+            content["text_content"]
+            or ""
+        )
 
         if description:
 
@@ -537,10 +594,6 @@ async def send_media_group(
 
     connection.close()
 
-    # -----------------------------------------------------
-    # لا توجد ملفات
-    # -----------------------------------------------------
-
     if not items:
 
         await update.message.reply_text(
@@ -550,7 +603,7 @@ async def send_media_group(
         return
 
     # -----------------------------------------------------
-    # إرسال وصف المجموعة
+    # الوصف
     # -----------------------------------------------------
 
     if group["description"]:
@@ -1201,6 +1254,10 @@ async def handle_text(
 
     if text == "◀️ رجوع":
 
+        # -------------------------------------------------
+        # إلغاء أي عملية قيد التنفيذ
+        # -------------------------------------------------
+
         for key in [
             "waiting_for_menu_name",
             "waiting_for_branch_name",
@@ -1218,49 +1275,63 @@ async def handle_text(
                 None
             )
 
-        current_menu_id = context.user_data.get(
-            "current_menu_id"
+        # -------------------------------------------------
+        # استخدام مسار القوائم
+        # -------------------------------------------------
+
+        stack = context.user_data.get(
+            "menu_stack",
+            []
         )
 
-        if current_menu_id:
+        # -------------------------------------------------
+        # إذا كان لدينا أكثر من قائمة في المسار
+        # -------------------------------------------------
 
-            connection = get_connection()
-            cursor = connection.cursor()
+        if len(stack) > 1:
 
-            cursor.execute(
-                """
-                SELECT parent_id
-                FROM menus
-                WHERE id = ?
-                """,
-                (current_menu_id,)
+            # إزالة القائمة الحالية
+            stack.pop()
+
+            # الأب المباشر
+            parent_id = stack[-1]
+
+            context.user_data[
+                "menu_stack"
+            ] = stack
+
+            await show_menu(
+                update,
+                context,
+                parent_id,
+                add_to_stack=False
             )
 
-            menu = cursor.fetchone()
+            return
 
-            connection.close()
+        # -------------------------------------------------
+        # إذا كنا في أول قائمة
+        # -------------------------------------------------
 
-            if menu and menu["parent_id"]:
+        context.user_data.pop(
+            "current_menu_id",
+            None
+        )
 
-                await show_menu(
-                    update,
-                    context,
-                    menu["parent_id"]
-                )
+        context.user_data.pop(
+            "current_menu_name",
+            None
+        )
 
-            else:
+        context.user_data.pop(
+            "menu_stack",
+            None
+        )
 
-                await update.message.reply_text(
-                    "⚙️ لوحة إدارة البوت",
-                    reply_markup=admin_keyboard()
-                )
-
-        else:
-
-            await update.message.reply_text(
-                "⚙️ لوحة إدارة البوت",
-                reply_markup=admin_keyboard()
-            )
+        await update.message.reply_text(
+            "⚙️ لوحة إدارة البوت",
+            reply_markup=admin_keyboard()
+        )
 
         return
 
@@ -1270,20 +1341,53 @@ async def handle_text(
 
     if text.startswith("📂 "):
 
-        menu_name = text[2:].strip()
+        menu_name = text[
+            len("📂 "):
+        ].strip()
+
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
+        )
 
         connection = get_connection()
         cursor = connection.cursor()
 
-        cursor.execute(
-            """
-            SELECT *
-            FROM menus
-            WHERE name = ?
-            LIMIT 1
-            """,
-            (menu_name,)
-        )
+        # -------------------------------------------------
+        # إذا كنا داخل قائمة، ابحث فقط عن أبنائها
+        # -------------------------------------------------
+
+        if current_menu_id:
+
+            cursor.execute(
+                """
+                SELECT *
+                FROM menus
+                WHERE name = ?
+                AND parent_id = ?
+                LIMIT 1
+                """,
+                (
+                    menu_name,
+                    current_menu_id
+                )
+            )
+
+        else:
+
+            # -------------------------------------------------
+            # القوائم الرئيسية فقط
+            # -------------------------------------------------
+
+            cursor.execute(
+                """
+                SELECT *
+                FROM menus
+                WHERE name = ?
+                AND parent_id IS NULL
+                LIMIT 1
+                """,
+                (menu_name,)
+            )
 
         menu = cursor.fetchone()
 
@@ -1303,50 +1407,52 @@ async def handle_text(
     # فتح مجموعة وسائط
     # =====================================================
 
-    group_title = text
-
-    # -----------------------------------------------------
-    # إزالة أيقونة المجموعة من بداية الزر
-    # -----------------------------------------------------
-
-    for icon in [
-        "🖼️ ",
-        "🎬 ",
-        "🎵 "
-    ]:
-
-        if group_title.startswith(icon):
-
-            group_title = group_title[
-                len(icon):
-            ]
-
-            break
-
-    # -----------------------------------------------------
-    # البحث عن المجموعة بالعنوان الحقيقي
-    # -----------------------------------------------------
+    group_title = remove_button_icon(
+        text
+    )
 
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM media_groups
-        WHERE title = ?
-        LIMIT 1
-        """,
-        (group_title,)
+    current_menu_id = context.user_data.get(
+        "current_menu_id"
     )
+
+    # -----------------------------------------------------
+    # البحث داخل القائمة الحالية
+    # -----------------------------------------------------
+
+    if current_menu_id:
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM media_groups
+            WHERE title = ?
+            AND menu_id = ?
+            LIMIT 1
+            """,
+            (
+                group_title,
+                current_menu_id
+            )
+        )
+
+    else:
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM media_groups
+            WHERE title = ?
+            LIMIT 1
+            """,
+            (group_title,)
+        )
 
     group = cursor.fetchone()
 
     connection.close()
-
-    # -----------------------------------------------------
-    # إرسال المجموعة
-    # -----------------------------------------------------
 
     if group:
 
@@ -1361,18 +1467,48 @@ async def handle_text(
     # فتح محتوى فردي
     # =====================================================
 
+    content_title = remove_button_icon(
+        text
+    )
+
     connection = get_connection()
     cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM contents
-        WHERE title = ?
-        LIMIT 1
-        """,
-        (text,)
+    current_menu_id = context.user_data.get(
+        "current_menu_id"
     )
+
+    # -----------------------------------------------------
+    # البحث داخل القائمة الحالية
+    # -----------------------------------------------------
+
+    if current_menu_id:
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM contents
+            WHERE title = ?
+            AND menu_id = ?
+            LIMIT 1
+            """,
+            (
+                content_title,
+                current_menu_id
+            )
+        )
+
+    else:
+
+        cursor.execute(
+            """
+            SELECT *
+            FROM contents
+            WHERE title = ?
+            LIMIT 1
+            """,
+            (content_title,)
+        )
 
     content = cursor.fetchone()
 
@@ -1421,10 +1557,6 @@ async def handle_media(
 
     if not is_admin:
         return
-
-    # -----------------------------------------------------
-    # التأكد من وجود عملية إضافة
-    # -----------------------------------------------------
 
     if not context.user_data.get(
         "creating_media_group"
@@ -1540,7 +1672,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # أمر البداية
+    # /start
     # -----------------------------------------------------
 
     app.add_handler(
@@ -1551,7 +1683,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # أمر الإدارة
+    # /admin
     # -----------------------------------------------------
 
     app.add_handler(
@@ -1562,7 +1694,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # استقبال النصوص
+    # النصوص
     # -----------------------------------------------------
 
     app.add_handler(
@@ -1573,7 +1705,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # استقبال الصور
+    # الصور
     # -----------------------------------------------------
 
     app.add_handler(
@@ -1584,7 +1716,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # استقبال الفيديو
+    # الفيديو
     # -----------------------------------------------------
 
     app.add_handler(
@@ -1595,7 +1727,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # استقبال الأصوات
+    # الأصوات
     # -----------------------------------------------------
 
     app.add_handler(
