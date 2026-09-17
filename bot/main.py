@@ -16,7 +16,18 @@ MAIN_KEYBOARD = [
     ["📖 القرآن والثقافة", "📚 الملازم"],
     ["🎧 المحاضرات", "ℹ️ عن البوت"],
 ]
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = ReplyKeyboardMarkup(
+        MAIN_KEYBOARD,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
+    await update.message.reply_text(
+        "🌿 أهلاً بك في بوت هدى للناس\n\n"
+        "اختر من القائمة:",
+        reply_markup=keyboard,
+    )
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
