@@ -2,7 +2,11 @@ import os
 
 from dotenv import load_dotenv
 
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -86,16 +90,28 @@ ADMIN_ID = int(
 )
 
 
-async def show_public_home(update, context):
+# ==================================================
+# واجهة المستخدم العامة
+# ==================================================
+
+async def show_public_home(
+    update,
+    context,
+):
     connection = get_connection()
 
     roots = connection.execute(
         """
-        SELECT id, name
+        SELECT
+            id,
+            name
         FROM menus
         WHERE parent_id IS NULL
         ORDER BY
-            CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+            CASE
+                WHEN display_order IS NULL THEN 1
+                ELSE 0
+            END,
             display_order,
             id
         """
@@ -126,7 +142,14 @@ async def show_public_home(update, context):
     )
 
 
-async def start(update, context):
+# ==================================================
+# START
+# ==================================================
+
+async def start(
+    update,
+    context,
+):
     register_user(
         update.effective_user
     )
@@ -139,7 +162,14 @@ async def start(update, context):
     )
 
 
-async def admin(update, context):
+# ==================================================
+# ADMIN
+# ==================================================
+
+async def admin(
+    update,
+    context,
+):
     register_user(
         update.effective_user
     )
@@ -168,6 +198,10 @@ async def admin(update, context):
     )
 
 
+# ==================================================
+# فتح قائمة أو فرع
+# ==================================================
+
 async def open_menu_from_button(
     update,
     context,
@@ -185,7 +219,8 @@ async def open_menu_from_button(
 
     menu = None
 
-    # إذا كنا داخل قائمة، ابحث عن الفرع داخلها فقط
+    # إذا كان المستخدم داخل قائمة
+    # ابحث عن الفرع بداخلها
     if current_menu_id:
         menu = connection.execute(
             """
@@ -201,7 +236,8 @@ async def open_menu_from_button(
             ),
         ).fetchone()
 
-    # إذا لم نجد فرعًا، ابحث عن قائمة رئيسية
+    # إذا لم يكن فرعًا
+    # ابحث عن قائمة رئيسية
     if not menu:
         menu = connection.execute(
             """
@@ -229,16 +265,28 @@ async def open_menu_from_button(
     )
 
 
-async def manage_menus(update, context):
+# ==================================================
+# إدارة القوائم
+# ==================================================
+
+async def manage_menus(
+    update,
+    context,
+):
     connection = get_connection()
 
     roots = connection.execute(
         """
-        SELECT id, name
+        SELECT
+            id,
+            name
         FROM menus
         WHERE parent_id IS NULL
         ORDER BY
-            CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+            CASE
+                WHEN display_order IS NULL THEN 1
+                ELSE 0
+            END,
             display_order,
             id
         """
@@ -264,6 +312,19 @@ async def manage_menus(update, context):
         )
         return
 
+    # مهم:
+    # عند دخول إدارة القوائم من البداية
+    # لا نعتبر المستخدم داخل قائمة
+    context.user_data.pop(
+        "current_menu_id",
+        None,
+    )
+
+    context.user_data.pop(
+        "current_menu_name",
+        None,
+    )
+
     await update.message.reply_text(
         "📋 اختر القائمة التي تريد إدارتها:",
         reply_markup=ReplyKeyboardMarkup(
@@ -273,7 +334,14 @@ async def manage_menus(update, context):
     )
 
 
-async def handle_cancel(update, context):
+# ==================================================
+# إلغاء
+# ==================================================
+
+async def handle_cancel(
+    update,
+    context,
+):
     context.user_data.clear()
 
     if is_admin(
@@ -290,7 +358,14 @@ async def handle_cancel(update, context):
         )
 
 
-async def handle_text(update, context):
+# ==================================================
+# TEXT ROUTER
+# ==================================================
+
+async def handle_text(
+    update,
+    context,
+):
     register_user(
         update.effective_user
     )
@@ -301,7 +376,10 @@ async def handle_text(update, context):
 
     user_id = update.effective_user.id
 
+    # ----------------------------------------------
     # إلغاء
+    # ----------------------------------------------
+
     if text == "❌ إلغاء":
         await handle_cancel(
             update,
@@ -309,8 +387,12 @@ async def handle_text(update, context):
         )
         return
 
+    # ----------------------------------------------
     # رجوع
+    # ----------------------------------------------
+
     if text == "◀️ رجوع":
+
         context.user_data.pop(
             "waiting_for_content_title",
             None,
@@ -355,34 +437,51 @@ async def handle_text(update, context):
             update,
             context,
         )
+
         return
 
+    # ----------------------------------------------
     # القائمة الرئيسية للإدارة
+    # ----------------------------------------------
+
     if text == "🏠 القائمة الرئيسية":
+
         context.user_data.clear()
 
         await admin(
             update,
             context,
         )
+
         return
 
+    # ----------------------------------------------
     # الإدارة
+    # ----------------------------------------------
+
     if text == "⚙️ الإدارة":
+
         await admin(
             update,
             context,
         )
+
         return
 
-    # =========================
+    # =================================================
     # المشرف
-    # =========================
+    # =================================================
 
     if is_admin(user_id):
 
-        # إضافة قائمة رئيسية
-        if text == "➕ إضافة قائمة":
+        # ---------------------------------------------
+        # إنشاء قائمة رئيسية
+        # ---------------------------------------------
+
+        if text in (
+            "➕ إنشاء قائمة",
+            "➕ إضافة قائمة",
+        ):
             context.user_data[
                 "waiting_for_root_name"
             ] = True
@@ -391,17 +490,26 @@ async def handle_text(update, context):
                 "📂 اكتب اسم القائمة الرئيسية:",
                 reply_markup=cancel_keyboard(),
             )
+
             return
 
+        # ---------------------------------------------
         # إدارة القوائم
+        # ---------------------------------------------
+
         if text == "📋 إدارة القوائم":
+
             await manage_menus(
                 update,
                 context,
             )
+
             return
 
+        # ---------------------------------------------
         # إضافة فرع
+        # ---------------------------------------------
+
         if text == "➕ إضافة فرع":
 
             current_menu_id = context.user_data.get(
@@ -422,17 +530,26 @@ async def handle_text(update, context):
                 "📂 اكتب اسم الفرع:",
                 reply_markup=cancel_keyboard(),
             )
+
             return
 
+        # ---------------------------------------------
         # إضافة محتوى
+        # ---------------------------------------------
+
         if text == "➕ إضافة محتوى":
+
             await start_add_content(
                 update,
                 context,
             )
+
             return
 
+        # ---------------------------------------------
         # أنواع المحتوى
+        # ---------------------------------------------
+
         content_types = {
             "📝 نص": "text",
             "🖼️ صورة": "photo",
@@ -443,85 +560,128 @@ async def handle_text(update, context):
         }
 
         if text in content_types:
+
             await select_content_type(
                 update,
                 context,
                 content_types[text],
             )
+
             return
 
+        # ---------------------------------------------
         # مجموعة الوسائط
+        # ---------------------------------------------
+
         if text == "🖼️🎥🎧 مجموعة وسائط":
+
             await start_media_group(
                 update,
                 context,
             )
+
             return
 
         if text == "✅ إنهاء المجموعة":
+
             await finish_media_group(
                 update,
                 context,
             )
+
             return
 
-        # تعديل
+        # ---------------------------------------------
+        # تعديل المحتوى
+        # ---------------------------------------------
+
         if text == "✏️ تعديل المحتوى":
+
             await list_editable_content(
                 update,
                 context,
             )
+
             return
 
-        # حذف
+        # ---------------------------------------------
+        # حذف المحتوى
+        # ---------------------------------------------
+
         if text == "🗑️ حذف المحتوى":
+
             await list_deletable_content(
                 update,
                 context,
             )
+
             return
 
+        # ---------------------------------------------
         # ترتيب
+        # ---------------------------------------------
+
         if text == "↕️ ترتيب العناصر":
+
             await update.message.reply_text(
                 "↕️ ترتيب العناصر سيتم تفعيله في المرحلة التالية."
             )
+
             return
 
+        # ---------------------------------------------
         # المشرفون
+        # ---------------------------------------------
+
         if text == "👥 المشرفون":
+
             await show_admins(
                 update,
                 context,
             )
+
             return
 
         if text == "➕ إضافة مشرف":
+
             await start_add_admin(
                 update,
                 context,
             )
+
             return
 
         if text == "🗑️ حذف مشرف":
+
             await start_remove_admin(
                 update,
                 context,
             )
+
             return
 
+        # ---------------------------------------------
         # الإحصائيات
+        # ---------------------------------------------
+
         if text == "📊 الإحصائيات":
+
             await show_stats(
                 update,
                 context,
             )
+
             return
+
+        # =================================================
+        # الحالات التي تنتظر إدخال المستخدم
+        # =================================================
 
         # اسم القائمة الرئيسية
         if context.user_data.get(
             "waiting_for_root_name"
         ):
+
             context.user_data.pop(
                 "waiting_for_root_name",
                 None,
@@ -532,12 +692,14 @@ async def handle_text(update, context):
                 context,
                 text,
             )
+
             return
 
         # اسم الفرع
         if context.user_data.get(
             "waiting_for_branch_name"
         ):
+
             parent_id = context.user_data.get(
                 "current_menu_id"
             )
@@ -553,113 +715,135 @@ async def handle_text(update, context):
                 parent_id,
                 text,
             )
+
             return
 
         # عنوان المحتوى
         if context.user_data.get(
             "waiting_for_content_title"
         ):
+
             await receive_content_title(
                 update,
                 context,
             )
+
             return
 
         # محتوى نص أو رابط
         if context.user_data.get(
             "waiting_for_content_value"
         ):
+
             content_type = context.user_data.get(
                 "new_content_type"
             )
 
             if content_type == "text":
+
                 await receive_text_content(
                     update,
                     context,
                 )
+
                 return
 
             if content_type == "link":
+
                 await receive_link_content(
                     update,
                     context,
                 )
+
                 return
 
         # اسم مجموعة الوسائط
         if context.user_data.get(
             "creating_media_group"
         ):
+
             await receive_group_title(
                 update,
                 context,
             )
+
             return
 
         # وصف المجموعة
         if context.user_data.get(
             "waiting_for_group_description"
         ):
+
             await receive_group_description(
                 update,
                 context,
             )
+
             return
 
         # إضافة مشرف
         if context.user_data.get(
             "waiting_for_admin_id"
         ):
+
             await receive_admin_id(
                 update,
                 context,
             )
+
             return
 
         # حذف مشرف
         if context.user_data.get(
             "waiting_for_remove_admin_id"
         ):
+
             await receive_remove_admin_id(
                 update,
                 context,
             )
+
             return
 
-        # تعديل محتوى
+        # تعديل المحتوى
         if context.user_data.get(
             "waiting_for_edit_value"
         ):
+
             await save_edit_value(
                 update,
                 context,
             )
+
             return
 
         # تأكيد الحذف
         if text == "✅ نعم، حذف":
+
             await confirm_delete_content(
                 update,
                 context,
             )
+
             return
 
-    # =========================
-    # فتح القوائم والفروع
-    # =========================
+    # =================================================
+    # فتح قائمة أو فرع
+    # =================================================
 
     if text.startswith("📂 "):
+
         await open_menu_from_button(
             update,
             context,
             text,
         )
+
         return
 
-    # =========================
+    # =================================================
     # فتح المحتوى
-    # =========================
+    # =================================================
 
     title = strip_content_icon(
         text
@@ -675,32 +859,44 @@ async def handle_text(update, context):
         return
 
 
-async def handle_media(update, context):
+# ==================================================
+# MEDIA ROUTER
+# ==================================================
 
+async def handle_media(
+    update,
+    context,
+):
     # مجموعة الوسائط
     if context.user_data.get(
         "waiting_for_group_media"
     ):
 
         if update.message.photo:
+
             await receive_group_photo(
                 update,
                 context,
             )
+
             return
 
         if update.message.video:
+
             await receive_group_video(
                 update,
                 context,
             )
+
             return
 
         if update.message.audio:
+
             await receive_group_audio(
                 update,
                 context,
             )
+
             return
 
     # محتوى منفرد
@@ -714,48 +910,60 @@ async def handle_media(update, context):
     )
 
     if content_type == "photo":
+
         await receive_photo_content(
             update,
             context,
         )
+
         return
 
     if content_type == "video":
+
         await receive_video_content(
             update,
             context,
         )
+
         return
 
     if content_type == "audio":
+
         await receive_audio_content(
             update,
             context,
         )
+
         return
 
     if content_type == "document":
+
         await receive_document_content(
             update,
             context,
         )
+
         return
 
 
-async def callback_handler(update, context):
+# ==================================================
+# CALLBACKS
+# ==================================================
 
+async def callback_handler(
+    update,
+    context,
+):
     if not is_admin(
         update.effective_user.id
     ):
+
         await update.callback_query.answer(
             "⛔ ليس لديك صلاحية.",
             show_alert=True,
         )
-        return
 
-    from bot.handlers.content import (
-        handle_content_callback
-    )
+        return
 
     await handle_content_callback(
         update,
@@ -763,9 +971,14 @@ async def callback_handler(update, context):
     )
 
 
+# ==================================================
+# MAIN
+# ==================================================
+
 def main():
 
     if not BOT_TOKEN:
+
         raise RuntimeError(
             "BOT_TOKEN غير موجود."
         )
@@ -773,6 +986,7 @@ def main():
     initialize_database()
 
     if ADMIN_ID:
+
         add_admin(
             ADMIN_ID
         )
