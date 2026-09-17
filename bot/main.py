@@ -3,12 +3,13 @@ import os
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
+from database import initialize_database
 
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
+initialize_database()
 
 MAIN_KEYBOARD = [
     ["📖 القرآن والثقافة", "📚 الملازم"],
