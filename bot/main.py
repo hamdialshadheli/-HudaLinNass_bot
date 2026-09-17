@@ -18,19 +18,20 @@ MAIN_KEYBOARD = [
 ]
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_ID):
+    user_id = update.effective_user.id
+
+    await update.message.reply_text(
+        f"🔎 Telegram ID الخاص بك هو:\n\n{user_id}\n\n"
+        "قارن هذا الرقم مع الرقم الموجود في ADMIN_ID داخل GitHub."
+    )
+
+    if str(user_id) != str(ADMIN_ID):
         await update.message.reply_text("❌ ليس لديك صلاحية الدخول.")
         return
 
     await update.message.reply_text(
         "⚙️ لوحة تحكم المشرف\n\n"
         "اختر العملية التي تريد تنفيذها:"
-    )
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = ReplyKeyboardMarkup(
-        MAIN_KEYBOARD,
-        resize_keyboard=True,
-        is_persistent=True,
     )
 
     await update.message.reply_text(
