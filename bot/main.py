@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 
@@ -10,11 +10,52 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 
+MAIN_KEYBOARD = [
+    ["📖 القرآن والثقافة", "📚 الملازم"],
+    ["🎧 المحاضرات", "ℹ️ عن البوت"],
+]
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = ReplyKeyboardMarkup(
+        MAIN_KEYBOARD,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
     await update.message.reply_text(
         "🌿 أهلاً بك في بوت هدى للناس\n\n"
-        "تم تشغيل البوت بنجاح ✅"
+        "اختر من القائمة:",
+        reply_markup=keyboard,
     )
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text == "📖 القرآن والثقافة":
+        await update.message.reply_text(
+            "📖 القرآن والثقافة\n\n"
+            "سيتم إضافة المحتوى هنا."
+        )
+
+    elif text == "📚 الملازم":
+        await update.message.reply_text(
+            "📚 الملازم\n\n"
+            "سيتم إضافة الملازم هنا."
+        )
+
+    elif text == "🎧 المحاضرات":
+        await update.message.reply_text(
+            "🎧 المحاضرات\n\n"
+            "سيتم إضافة المحاضرات هنا."
+        )
+
+    elif text == "ℹ️ عن البوت":
+        await update.message.reply_text(
+            "ℹ️ عن بوت هدى للناس\n\n"
+            "منصة ثقافية قيد التطوير."
+        )
 
 
 def main():
@@ -26,6 +67,12 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+
+    from telegram.ext import MessageHandler, filters
+
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
     print("✅ Bot is running...", flush=True)
 
