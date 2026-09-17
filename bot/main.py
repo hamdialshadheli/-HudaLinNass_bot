@@ -12,7 +12,6 @@ from telegram.ext import (
 
 from database import initialize_database, get_connection
 
-
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -68,7 +67,54 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+
+    # ==========================================
+    # إضافة قائمة رئيسية
+    # ==========================================
+
+    if text == "➕ إضافة قائمة":
+        context.user_data["adding_menu"] = True
+
+        await update.message.reply_text(
+            "➕ إضافة قائمة\n\n"
+            "أرسل اسم القائمة الجديدة:"
+        )
+        return
+
+    # ==========================================
+    # حفظ القائمة الجديدة
+    # ==========================================
+
+    if context.user_data.get("adding_menu"):
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO menus (name, parent_id, sort_order)
+            VALUES (?, ?, ?)
+            """,
+            (text, None, 0),
+        )
+
+        connection.commit()
+        connection.close()
+
+        context.user_data["adding_menu"] = False
+
+        await update.message.reply_text(
+            "✅ تم إنشاء القائمة بنجاح\n\n"
+            f"📁 {text}"
+        )
+        return
+
+    # ==========================================
+    # إدارة القوائم
+    # ==========================================
+
     if text == "📋 إدارة القوائم":
+
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -93,7 +139,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
 
         for menu in menus:
-            keyboard.append([f"📁 {menu['name']}"])
+            keyboard.append(
+                [f"📁 {menu['name']}"]
+            )
 
         await update.message.reply_text(
             "📋 القوائم الرئيسية:\n\n"
@@ -104,10 +152,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 is_persistent=True,
             ),
         )
+
         return
-            # فتح قائمة لإدارتها
+
+    # ==========================================
+    # فتح القائمة وإظهار خيارات إدارتها
+    # ==========================================
+
     if text.startswith("📁 "):
-        menu_name = text[3:]
+
+        menu_name = text[2:].strip()
 
         connection = get_connection()
         cursor = connection.cursor()
@@ -117,7 +171,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT id, name
             FROM menus
             WHERE name = ? AND parent_id IS NULL
-            ORDER BY sort_order, id
+            ORDER BY id DESC
+            LIMIT 1
             """,
             (menu_name,),
         )
@@ -125,81 +180,86 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu = cursor.fetchone()
         connection.close()
 
-        if menu:
-            context.user_data["current_menu_id"] = menu["id"]
-
-            keyboard = ReplyKeyboardMarkup(
-                [
-                    ["➕ إضافة فرع"],
-                    ["📝 إضافة نص"],
-                    ["🖼️ إضافة صورة"],
-                    ["🎥 إضافة فيديو"],
-                    ["⬅️ رجوع"],
-                ],
-                resize_keyboard=True,
-                is_persistent=True,
-            )
-
+        if not menu:
             await update.message.reply_text(
-                f"📁 {menu['name']}\n\n"
-                "⚙️ إدارة القائمة\n\n"
-                "اختر العملية:",
-                reply_markup=keyboard,
+                "❌ لم يتم العثور على هذه القائمة."
             )
             return
-    # إضافة قائمة جديدة
-    if text == "➕ إضافة قائمة":
-        context.user_data["adding_menu"] = True
+
+        context.user_data["current_menu_id"] = menu["id"]
+
+        keyboard = ReplyKeyboardMarkup(
+            [
+                ["➕ إضافة فرع"],
+                ["📝 إضافة نص"],
+                ["🖼️ إضافة صورة"],
+                ["🎬 إضافة فيديو"],
+                ["◀️ رجوع"],
+            ],
+            resize_keyboard=True,
+            is_persistent=True,
+        )
 
         await update.message.reply_text(
-            "➕ إضافة قائمة\n\n"
-            "أرسل اسم القائمة الجديدة:"
+            f"📁 إدارة القائمة: {menu['name']}\n\n"
+            "اختر العملية التي تريد تنفيذها:",
+            reply_markup=keyboard,
         )
+
         return
 
-    # استقبال اسم القائمة وحفظه
-    if context.user_data.get("adding_menu"):
-        connection = get_connection()
-        cursor = connection.cursor()
+    # ==========================================
+    # رجوع
+    # ==========================================
 
-        cursor.execute(
-            """
-            INSERT INTO menus (name, parent_id, sort_order)
-            VALUES (?, ?, ?)
-            """,
-            (text, None, 0),
+    if text == "◀️ رجوع":
+
+        keyboard = ReplyKeyboardMarkup(
+            [
+                ["➕ إضافة قائمة"],
+                ["📋 إدارة القوائم"],
+            ],
+            resize_keyboard=True,
+            is_persistent=True,
         )
-
-        connection.commit()
-        connection.close()
-
-        context.user_data["adding_menu"] = False
 
         await update.message.reply_text(
-            f"✅ تم إنشاء القائمة بنجاح\n\n"
-            f"📁 {text}"
+            "⚙️ لوحة تحكم المشرف\n\n"
+            "اختر العملية التي تريد تنفيذها:",
+            reply_markup=keyboard,
         )
+
+        context.user_data.pop("current_menu_id", None)
+
         return
+
+    # ==========================================
+    # القوائم العامة للبوت
+    # ==========================================
 
     if text == "📖 القرآن والثقافة":
+
         await update.message.reply_text(
             "📖 القرآن والثقافة\n\n"
             "سيتم إضافة المحتوى هنا."
         )
 
     elif text == "📚 الملازم":
+
         await update.message.reply_text(
             "📚 الملازم\n\n"
             "سيتم إضافة الملازم هنا."
         )
 
     elif text == "🎧 المحاضرات":
+
         await update.message.reply_text(
             "🎧 المحاضرات\n\n"
             "سيتم إضافة المحاضرات هنا."
         )
 
     elif text == "ℹ️ عن البوت":
+
         await update.message.reply_text(
             "ℹ️ عن بوت هدى للناس\n\n"
             "منصة ثقافية قيد التطوير."
@@ -207,18 +267,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN غير موجود")
 
     if not ADMIN_ID:
         raise ValueError("ADMIN_ID غير موجود")
 
-    print("🚀 Huda People Bot is starting...", flush=True)
+    print(
+        "🚀 Huda People Bot is starting...",
+        flush=True,
+    )
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("admin", admin)
+    )
 
     app.add_handler(
         MessageHandler(
@@ -227,7 +296,10 @@ def main():
         )
     )
 
-    print("✅ Bot is running...", flush=True)
+    print(
+        "✅ Bot is running...",
+        flush=True
+    )
 
     app.run_polling()
 
