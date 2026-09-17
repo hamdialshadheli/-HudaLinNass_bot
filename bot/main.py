@@ -232,7 +232,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("current_menu_id", None)
 
         return
+    # ==========================================
+    # إضافة فرع للقائمة الحالية
+    # ==========================================
 
+    if text == "➕ إضافة فرع":
+
+        current_menu_id = context.user_data.get("current_menu_id")
+
+        if not current_menu_id:
+            await update.message.reply_text(
+                "❌ لم يتم تحديد القائمة الحالية."
+            )
+            return
+
+        context.user_data["adding_branch"] = True
+
+        await update.message.reply_text(
+            "➕ إضافة فرع\n\n"
+            "أرسل اسم الفرع الجديد:"
+        )
+
+        return
+
+    # ==========================================
+    # حفظ الفرع الجديد
+    # ==========================================
+
+    if context.user_data.get("adding_branch"):
+
+        current_menu_id = context.user_data.get("current_menu_id")
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO menus (name, parent_id, sort_order)
+            VALUES (?, ?, ?)
+            """,
+            (text, current_menu_id, 0),
+        )
+
+        connection.commit()
+        connection.close()
+
+        context.user_data["adding_branch"] = False
+
+        await update.message.reply_text(
+            "✅ تم إنشاء الفرع بنجاح\n\n"
+            f"📁 {text}"
+        )
+
+        return
     # ==========================================
     # القوائم العامة للبوت
     # ==========================================
