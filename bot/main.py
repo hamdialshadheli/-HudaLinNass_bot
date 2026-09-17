@@ -31,18 +31,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    await update.message.reply_text(
-        f"🔎 Telegram ID الخاص بك هو:\n\n{user_id}\n\n"
-        "قارن هذا الرقم مع الرقم الموجود في ADMIN_ID داخل GitHub."
-    )
-
     if str(user_id) != str(ADMIN_ID):
-        await update.message.reply_text("❌ ليس لديك صلاحية الدخول.")
+        await update.message.reply_text(
+            "❌ ليس لديك صلاحية الدخول."
+        )
         return
+
+    keyboard = ReplyKeyboardMarkup(
+        [
+            ["➕ إضافة قائمة"],
+            ["📋 إدارة القوائم"],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
     await update.message.reply_text(
         "⚙️ لوحة تحكم المشرف\n\n"
-        "اختر العملية التي تريد تنفيذها:"
+        "اختر العملية التي تريد تنفيذها:",
+        reply_markup=keyboard,
     )
 
     await update.message.reply_text(
@@ -53,6 +60,12 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+       if update.message.text == "➕ إضافة قائمة":
+        await update.message.reply_text(
+            "➕ إضافة قائمة\n\n"
+            "أرسل اسم القائمة الجديدة:"
+        )
+        return
     text = update.message.text
 
     if text == "📖 القرآن والثقافة":
