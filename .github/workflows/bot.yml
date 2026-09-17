@@ -26,4 +26,4 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_ID: ${{ secrets.ADMIN_ID }}
         run: |
-          python -u bot/main.py
+         python -m bot.main
