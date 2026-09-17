@@ -77,7 +77,7 @@ def media_group_icon(media_type):
     )
 
 # =========================================================
-# إزالة أيقونة الزر
+# إزالة أيقونة من بداية الزر
 # =========================================================
 
 def remove_button_icon(text):
@@ -93,7 +93,6 @@ def remove_button_icon(text):
     for icon in icons:
 
         if text.startswith(icon):
-
             return text[len(icon):]
 
     return text
@@ -160,7 +159,7 @@ def menu_keyboard(menu_id):
     keyboard = []
 
     # -----------------------------------------------------
-    # الفروع
+    # عرض الفروع
     # -----------------------------------------------------
 
     for menu in menus:
@@ -170,7 +169,7 @@ def menu_keyboard(menu_id):
         )
 
     # -----------------------------------------------------
-    # المحتويات الفردية
+    # أيقونات المحتويات
     # -----------------------------------------------------
 
     icons = {
@@ -179,6 +178,10 @@ def menu_keyboard(menu_id):
         "video": "🎬",
         "audio": "🎵",
     }
+
+    # -----------------------------------------------------
+    # عرض المحتويات الفردية
+    # -----------------------------------------------------
 
     for content in contents:
 
@@ -192,7 +195,7 @@ def menu_keyboard(menu_id):
         )
 
     # -----------------------------------------------------
-    # مجموعات الوسائط
+    # عرض مجموعات الوسائط
     # -----------------------------------------------------
 
     for group in groups:
@@ -233,7 +236,7 @@ async def show_menu(
     update,
     context,
     menu_id,
-    add_to_stack=True
+    add_to_stack=False
 ):
 
     connection = get_connection()
@@ -271,28 +274,6 @@ async def show_menu(
     context.user_data[
         "current_menu_name"
     ] = menu["name"]
-
-    # -----------------------------------------------------
-    # إدارة مسار القوائم
-    # -----------------------------------------------------
-
-    if add_to_stack:
-
-        stack = context.user_data.get(
-            "menu_stack",
-            []
-        )
-
-        # منع تكرار نفس القائمة في المسار
-        if not stack or stack[-1] != menu["id"]:
-
-            stack.append(
-                menu["id"]
-            )
-
-        context.user_data[
-            "menu_stack"
-        ] = stack
 
     # -----------------------------------------------------
     # عرض القائمة
@@ -594,6 +575,10 @@ async def send_media_group(
 
     connection.close()
 
+    # -----------------------------------------------------
+    # لا توجد ملفات
+    # -----------------------------------------------------
+
     if not items:
 
         await update.message.reply_text(
@@ -603,7 +588,7 @@ async def send_media_group(
         return
 
     # -----------------------------------------------------
-    # الوصف
+    # وصف المجموعة
     # -----------------------------------------------------
 
     if group["description"]:
@@ -1249,13 +1234,13 @@ async def handle_text(
         return
 
     # =====================================================
-    # الرجوع
+    # الرجوع درجة واحدة فقط
     # =====================================================
 
     if text == "◀️ رجوع":
 
         # -------------------------------------------------
-        # إلغاء أي عملية قيد التنفيذ
+        # إلغاء العمليات المؤقتة
         # -------------------------------------------------
 
         for key in [
@@ -1268,6 +1253,9 @@ async def handle_text(
             "creating_media_group",
             "media_group_id",
             "media_group_count",
+            "new_group_title",
+            "new_group_type",
+            "new_text_title",
         ]:
 
             context.user_data.pop(
@@ -1276,29 +1264,55 @@ async def handle_text(
             )
 
         # -------------------------------------------------
-        # استخدام مسار القوائم
+        # القائمة الحالية
         # -------------------------------------------------
 
-        stack = context.user_data.get(
-            "menu_stack",
-            []
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
         )
 
+        if not current_menu_id:
+
+            await update.message.reply_text(
+                "⚙️ لوحة إدارة البوت",
+                reply_markup=admin_keyboard()
+            )
+
+            return
+
         # -------------------------------------------------
-        # إذا كان لدينا أكثر من قائمة في المسار
+        # الحصول على الأب المباشر
         # -------------------------------------------------
 
-        if len(stack) > 1:
+        connection = get_connection()
+        cursor = connection.cursor()
 
-            # إزالة القائمة الحالية
-            stack.pop()
+        cursor.execute(
+            """
+            SELECT parent_id
+            FROM menus
+            WHERE id = ?
+            """,
+            (current_menu_id,)
+        )
 
-            # الأب المباشر
-            parent_id = stack[-1]
+        current_menu = cursor.fetchone()
 
-            context.user_data[
-                "menu_stack"
-            ] = stack
+        connection.close()
+
+        # -------------------------------------------------
+        # إذا كان للقائمة أب
+        # يرجع درجة واحدة فقط
+        # -------------------------------------------------
+
+        if (
+            current_menu
+            and current_menu["parent_id"] is not None
+        ):
+
+            parent_id = current_menu[
+                "parent_id"
+            ]
 
             await show_menu(
                 update,
@@ -1310,7 +1324,8 @@ async def handle_text(
             return
 
         # -------------------------------------------------
-        # إذا كنا في أول قائمة
+        # إذا كانت القائمة رئيسية
+        # نعود إلى إدارة القوائم
         # -------------------------------------------------
 
         context.user_data.pop(
@@ -1320,11 +1335,6 @@ async def handle_text(
 
         context.user_data.pop(
             "current_menu_name",
-            None
-        )
-
-        context.user_data.pop(
-            "menu_stack",
             None
         )
 
@@ -1353,7 +1363,8 @@ async def handle_text(
         cursor = connection.cursor()
 
         # -------------------------------------------------
-        # إذا كنا داخل قائمة، ابحث فقط عن أبنائها
+        # إذا كنا داخل قائمة
+        # نبحث فقط عن الأبناء المباشرين
         # -------------------------------------------------
 
         if current_menu_id:
@@ -1375,7 +1386,7 @@ async def handle_text(
         else:
 
             # -------------------------------------------------
-            # القوائم الرئيسية فقط
+            # البحث في القوائم الرئيسية
             # -------------------------------------------------
 
             cursor.execute(
@@ -1398,7 +1409,8 @@ async def handle_text(
             await show_menu(
                 update,
                 context,
-                menu["id"]
+                menu["id"],
+                add_to_stack=False
             )
 
         return
@@ -1417,10 +1429,6 @@ async def handle_text(
     current_menu_id = context.user_data.get(
         "current_menu_id"
     )
-
-    # -----------------------------------------------------
-    # البحث داخل القائمة الحالية
-    # -----------------------------------------------------
 
     if current_menu_id:
 
@@ -1477,10 +1485,6 @@ async def handle_text(
     current_menu_id = context.user_data.get(
         "current_menu_id"
     )
-
-    # -----------------------------------------------------
-    # البحث داخل القائمة الحالية
-    # -----------------------------------------------------
 
     if current_menu_id:
 
@@ -1557,6 +1561,10 @@ async def handle_media(
 
     if not is_admin:
         return
+
+    # -----------------------------------------------------
+    # التأكد من وجود عملية إضافة
+    # -----------------------------------------------------
 
     if not context.user_data.get(
         "creating_media_group"
