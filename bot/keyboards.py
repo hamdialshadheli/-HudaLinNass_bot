@@ -4,13 +4,13 @@ from telegram import ReplyKeyboardMarkup
 def make_keyboard(rows):
     return ReplyKeyboardMarkup(
         rows,
-        resize_keyboard=True
+        resize_keyboard=True,
     )
 
 
 def admin_keyboard():
     return make_keyboard([
-        ["➕ إضافة قائمة", "📋 إدارة القوائم"],
+        ["➕ إنشاء قائمة", "📋 إدارة القوائم"],
         ["➕ إضافة محتوى", "✏️ تعديل المحتوى"],
         ["🗑️ حذف المحتوى", "↕️ ترتيب العناصر"],
         ["👥 المشرفون", "📊 الإحصائيات"],
@@ -39,7 +39,7 @@ def content_type_keyboard():
 
 def cancel_keyboard():
     return make_keyboard([
-        ["❌ إلغاء"]
+        ["❌ إلغاء"],
     ])
 
 
@@ -52,5 +52,16 @@ def confirm_delete_keyboard():
 
 def back_keyboard():
     return make_keyboard([
-        ["◀️ رجوع"]
+        ["◀️ رجوع"],
     ])
+
+
+def menu_navigation_keyboard(items):
+    rows = []
+
+    for item in items:
+        rows.append([item])
+
+    rows.append(["◀️ رجوع"])
+
+    return make_keyboard(rows)
