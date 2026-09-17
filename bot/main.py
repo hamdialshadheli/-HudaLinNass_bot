@@ -155,83 +155,88 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # ==========================================
-    # فتح القائمة وإظهار خيارات إدارتها
-    # ==========================================
+   # ==========================================
+# فتح القائمة وإظهار محتوياتها
+# ==========================================
 
-    if text.startswith("📁 "):
+if text.startswith("📁 "):
 
-        menu_name = text[2:].strip()
+    menu_name = text[2:].strip()
 
-        connection = get_connection()
-        cursor = connection.cursor()
+    connection = get_connection()
+    cursor = connection.cursor()
 
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM menus
-            WHERE name = ? AND parent_id IS NULL
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (menu_name,),
-        )
+    cursor.execute(
+        """
+        SELECT id, name
+        FROM menus
+        WHERE name = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (menu_name,),
+    )
 
-        menu = cursor.fetchone()
+    menu = cursor.fetchone()
+
+    if not menu:
         connection.close()
 
-        if not menu:
-            await update.message.reply_text(
-                "❌ لم يتم العثور على هذه القائمة."
-            )
-            return
-
-        context.user_data["current_menu_id"] = menu["id"]
-
-        keyboard = ReplyKeyboardMarkup(
-            [
-                ["➕ إضافة فرع"],
-                ["📝 إضافة نص"],
-                ["🖼️ إضافة صورة"],
-                ["🎬 إضافة فيديو"],
-                ["◀️ رجوع"],
-            ],
-            resize_keyboard=True,
-            is_persistent=True,
-        )
-
         await update.message.reply_text(
-            f"📁 إدارة القائمة: {menu['name']}\n\n"
-            "اختر العملية التي تريد تنفيذها:",
-            reply_markup=keyboard,
+            "❌ لم يتم العثور على هذه القائمة."
         )
 
         return
 
-    # ==========================================
-    # رجوع
-    # ==========================================
+    menu_id = menu["id"]
 
-    if text == "◀️ رجوع":
+    context.user_data["current_menu_id"] = menu_id
 
-        keyboard = ReplyKeyboardMarkup(
-            [
-                ["➕ إضافة قائمة"],
-                ["📋 إدارة القوائم"],
-            ],
+    # جلب الفروع الموجودة داخل القائمة
+    cursor.execute(
+        """
+        SELECT id, name
+        FROM menus
+        WHERE parent_id = ?
+        ORDER BY sort_order, id
+        """,
+        (menu_id,),
+    )
+
+    branches = cursor.fetchall()
+
+    connection.close()
+
+    keyboard = []
+
+    # عرض الفروع
+    for branch in branches:
+        keyboard.append(
+            [f"📁 {branch['name']}"]
+        )
+
+    # أزرار الإدارة
+    keyboard.extend(
+        [
+            ["➕ إضافة فرع"],
+            ["📝 إضافة نص"],
+            ["🖼️ إضافة صورة"],
+            ["🎬 إضافة فيديو"],
+            ["◀️ رجوع"],
+        ]
+    )
+
+    await update.message.reply_text(
+        f"📁 {menu['name']}\n\n"
+        "اختر من الفروع أو من خيارات الإدارة:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard,
             resize_keyboard=True,
             is_persistent=True,
-        )
+        ),
+    )
 
-        await update.message.reply_text(
-            "⚙️ لوحة تحكم المشرف\n\n"
-            "اختر العملية التي تريد تنفيذها:",
-            reply_markup=keyboard,
-        )
-
-        context.user_data.pop("current_menu_id", None)
-
-        return
+    return
     # ==========================================
     # إضافة فرع للقائمة الحالية
     # ==========================================
