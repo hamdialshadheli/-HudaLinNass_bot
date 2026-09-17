@@ -2,7 +2,14 @@ import os
 
 from dotenv import load_dotenv
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
 from database import initialize_database
 
 
@@ -10,12 +17,16 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
+
 initialize_database()
+
 
 MAIN_KEYBOARD = [
     ["📖 القرآن والثقافة", "📚 الملازم"],
     ["🎧 المحاضرات", "ℹ️ عن البوت"],
 ]
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = ReplyKeyboardMarkup(
         MAIN_KEYBOARD,
@@ -28,6 +39,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختر من القائمة:",
         reply_markup=keyboard,
     )
+
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -52,21 +65,16 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
     )
 
-    await update.message.reply_text(
-        "🌿 أهلاً بك في بوت هدى للناس\n\n"
-        "اختر من القائمة:",
-        reply_markup=keyboard,
-    )
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-       if update.message.text == "➕ إضافة قائمة":
+    text = update.message.text
+
+    if text == "➕ إضافة قائمة":
         await update.message.reply_text(
             "➕ إضافة قائمة\n\n"
             "أرسل اسم القائمة الجديدة:"
         )
         return
-    text = update.message.text
 
     if text == "📖 القرآن والثقافة":
         await update.message.reply_text(
@@ -97,6 +105,9 @@ def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN غير موجود")
 
+    if not ADMIN_ID:
+        raise ValueError("ADMIN_ID غير موجود")
+
     print("🚀 Huda People Bot is starting...", flush=True)
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -104,10 +115,11 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin))
 
-    from telegram.ext import MessageHandler, filters
-
     app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message,
+        )
     )
 
     print("✅ Bot is running...", flush=True)
