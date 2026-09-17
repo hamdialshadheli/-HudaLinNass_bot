@@ -9,6 +9,7 @@ from database import initialize_database
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = os.getenv("ADMIN_ID")
 initialize_database()
 
 MAIN_KEYBOARD = [
@@ -16,7 +17,15 @@ MAIN_KEYBOARD = [
     ["🎧 المحاضرات", "ℹ️ عن البوت"],
 ]
 
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_ID):
+        await update.message.reply_text("❌ ليس لديك صلاحية الدخول.")
+        return
 
+    await update.message.reply_text(
+        "⚙️ لوحة تحكم المشرف\n\n"
+        "اختر العملية التي تريد تنفيذها:"
+    )
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = ReplyKeyboardMarkup(
         MAIN_KEYBOARD,
@@ -68,6 +77,7 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin))
 
     from telegram.ext import MessageHandler, filters
 
