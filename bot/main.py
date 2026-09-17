@@ -25,6 +25,7 @@ from bot.database import (
 )
 
 from bot.keyboards import (
+    user_keyboard,
     admin_keyboard,
     cancel_keyboard,
 )
@@ -98,46 +99,14 @@ async def show_public_home(
     update,
     context,
 ):
-    connection = get_connection()
-
-    roots = connection.execute(
-        """
-        SELECT
-            id,
-            name
-        FROM menus
-        WHERE parent_id IS NULL
-        ORDER BY
-            CASE
-                WHEN display_order IS NULL THEN 1
-                ELSE 0
-            END,
-            display_order,
-            id
-        """
-    ).fetchall()
-
-    connection.close()
-
-    keyboard = []
-
-    for root in roots:
-        keyboard.append(
-            [f"📂 {root['name']}"]
-        )
-
-    if is_admin(
+    is_admin_user = is_admin(
         update.effective_user.id
-    ):
-        keyboard.append(
-            ["⚙️ الإدارة"]
-        )
+    )
 
     await update.message.reply_text(
         "🌿 مرحباً بك في هدى للناس",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True,
+        reply_markup=user_keyboard(
+            is_admin_user=is_admin_user
         ),
     )
 
@@ -182,19 +151,27 @@ async def admin(
         )
         return
 
-    context.user_data.pop(
-        "waiting_for_root_name",
-        None,
-    )
-
-    context.user_data.pop(
-        "waiting_for_branch_name",
-        None,
-    )
+    context.user_data.clear()
 
     await update.message.reply_text(
-        "⚙️ لوحة إدارة البوت",
+        "⚙️ لوحة تحكم هدى للناس",
         reply_markup=admin_keyboard(),
+    )
+
+
+# ==================================================
+# فتح واجهة المستخدم من الأدمن
+# ==================================================
+
+async def show_user_interface(
+    update,
+    context,
+):
+    context.user_data.clear()
+
+    await show_public_home(
+        update,
+        context,
     )
 
 
@@ -219,8 +196,6 @@ async def open_menu_from_button(
 
     menu = None
 
-    # إذا كان المستخدم داخل قائمة
-    # ابحث عن الفرع بداخلها
     if current_menu_id:
         menu = connection.execute(
             """
@@ -236,8 +211,6 @@ async def open_menu_from_button(
             ),
         ).fetchone()
 
-    # إذا لم يكن فرعًا
-    # ابحث عن قائمة رئيسية
     if not menu:
         menu = connection.execute(
             """
@@ -305,16 +278,6 @@ async def manage_menus(
         ["◀️ رجوع"]
     )
 
-    if not roots:
-        await update.message.reply_text(
-            "ℹ️ لا توجد قوائم حاليًا.",
-            reply_markup=admin_keyboard(),
-        )
-        return
-
-    # مهم:
-    # عند دخول إدارة القوائم من البداية
-    # لا نعتبر المستخدم داخل قائمة
     context.user_data.pop(
         "current_menu_id",
         None,
@@ -325,8 +288,15 @@ async def manage_menus(
         None,
     )
 
+    if not roots:
+        await update.message.reply_text(
+            "ℹ️ لا توجد قوائم حاليًا.",
+            reply_markup=admin_keyboard(),
+        )
+        return
+
     await update.message.reply_text(
-        "📋 اختر القائمة التي تريد إدارتها:",
+        "📂 إدارة القوائم\n\nاختر القائمة التي تريد إدارتها:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard,
             resize_keyboard=True,
@@ -441,14 +411,18 @@ async def handle_text(
         return
 
     # ----------------------------------------------
-    # القائمة الرئيسية للإدارة
+    # واجهة المستخدم
     # ----------------------------------------------
 
-    if text == "🏠 القائمة الرئيسية":
+    if text == "👤 واجهة المستخدم":
 
-        context.user_data.clear()
+        if not is_admin(user_id):
+            await update.message.reply_text(
+                "⛔ ليس لديك صلاحية."
+            )
+            return
 
-        await admin(
+        await show_user_interface(
             update,
             context,
         )
@@ -468,6 +442,65 @@ async def handle_text(
 
         return
 
+    # ----------------------------------------------
+    # المستخدم: الأقسام الرئيسية
+    # ----------------------------------------------
+
+    if text in (
+        "📖 القرآن والثقافة",
+        "📚 الملازم",
+        "🎧 المحاضرات",
+    ):
+
+        menu_name = text[2:].strip()
+
+        connection = get_connection()
+
+        menu = connection.execute(
+            """
+            SELECT *
+            FROM menus
+            WHERE name = ?
+            AND parent_id IS NULL
+            LIMIT 1
+            """,
+            (menu_name,),
+        ).fetchone()
+
+        connection.close()
+
+        if menu:
+
+            context.user_data["menu_path"] = []
+
+            await show_menu(
+                update,
+                context,
+                menu["id"],
+            )
+
+        else:
+
+            await update.message.reply_text(
+                f"ℹ️ قسم {menu_name} غير متاح حاليًا."
+            )
+
+        return
+
+    # ----------------------------------------------
+    # عن البوت
+    # ----------------------------------------------
+
+    if text == "ℹ️ عن البوت":
+
+        await update.message.reply_text(
+            "🌿 هدى للناس\n\n"
+            "منصة ثقافية ومعرفية لخدمة المستخدمين "
+            "وتسهيل الوصول إلى المحتوى."
+        )
+
+        return
+
     # =================================================
     # المشرف
     # =================================================
@@ -482,6 +515,7 @@ async def handle_text(
             "➕ إنشاء قائمة",
             "➕ إضافة قائمة",
         ):
+
             context.user_data[
                 "waiting_for_root_name"
             ] = True
@@ -497,7 +531,7 @@ async def handle_text(
         # إدارة القوائم
         # ---------------------------------------------
 
-        if text == "📋 إدارة القوائم":
+        if text == "📂 إدارة القوائم":
 
             await manage_menus(
                 update,
@@ -517,9 +551,12 @@ async def handle_text(
             )
 
             if not current_menu_id:
+
                 await update.message.reply_text(
-                    "❌ افتح القائمة التي تريد إضافة الفرع بداخلها أولًا."
+                    "❌ افتح القائمة التي تريد إضافة الفرع "
+                    "بداخلها أولًا."
                 )
+
                 return
 
             context.user_data[
@@ -624,7 +661,8 @@ async def handle_text(
         if text == "↕️ ترتيب العناصر":
 
             await update.message.reply_text(
-                "↕️ ترتيب العناصر سيتم تفعيله في المرحلة التالية."
+                "↕️ ترتيب العناصر سيتم تفعيله "
+                "في المرحلة التالية."
             )
 
             return
@@ -633,6 +671,16 @@ async def handle_text(
         # المشرفون
         # ---------------------------------------------
 
+        if text == "👥 إدارة المشرفين":
+
+            await show_admins(
+                update,
+                context,
+            )
+
+            return
+
+        # دعم الاسم القديم
         if text == "👥 المشرفون":
 
             await show_admins(
@@ -827,9 +875,9 @@ async def handle_text(
 
             return
 
-    # =================================================
+    # ==================================================
     # فتح قائمة أو فرع
-    # =================================================
+    # ==================================================
 
     if text.startswith("📂 "):
 
@@ -841,9 +889,9 @@ async def handle_text(
 
         return
 
-    # =================================================
+    # ==================================================
     # فتح المحتوى
-    # =================================================
+    # ==================================================
 
     title = strip_content_icon(
         text
@@ -903,6 +951,7 @@ async def handle_media(
     if not context.user_data.get(
         "waiting_for_content_value"
     ):
+
         return
 
     content_type = context.user_data.get(
