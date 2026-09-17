@@ -26,7 +26,142 @@ MAIN_KEYBOARD = [
 ]
 
 
+# =========================================================
+# أدوات مساعدة
+# =========================================================
+
+def admin_keyboard():
+    return ReplyKeyboardMarkup(
+        [
+            ["➕ إضافة قائمة"],
+            ["📋 إدارة القوائم"],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def menu_keyboard(menu_id):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    # الفروع
+    cursor.execute(
+        """
+        SELECT id, name
+        FROM menus
+        WHERE parent_id = ?
+        ORDER BY sort_order, id
+        """,
+        (menu_id,),
+    )
+
+    branches = cursor.fetchall()
+
+    # المحتوى
+    cursor.execute(
+        """
+        SELECT id, title, content_type
+        FROM contents
+        WHERE menu_id = ?
+        ORDER BY sort_order, id
+        """,
+        (menu_id,),
+    )
+
+    contents = cursor.fetchall()
+
+    connection.close()
+
+    keyboard = []
+
+    # الفروع
+    for branch in branches:
+        keyboard.append(
+            [f"📁 {branch['name']}"]
+        )
+
+    # المحتوى
+    for content in contents:
+
+        if content["content_type"] == "text":
+            icon = "📝"
+
+        elif content["content_type"] == "photo":
+            icon = "🖼️"
+
+        elif content["content_type"] == "video":
+            icon = "🎬"
+
+        else:
+            icon = "📄"
+
+        keyboard.append(
+            [f"{icon} {content['title']}"]
+        )
+
+    # خيارات الإدارة
+    keyboard.append(["➕ إضافة فرع"])
+    keyboard.append(["📝 إضافة نص"])
+    keyboard.append(["🖼️ إضافة صورة"])
+    keyboard.append(["🎬 إضافة فيديو"])
+    keyboard.append(["◀️ رجوع"])
+
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+async def show_menu(
+    update,
+    context,
+    menu_id,
+):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, name, parent_id
+        FROM menus
+        WHERE id = ?
+        """,
+        (menu_id,),
+    )
+
+    menu = cursor.fetchone()
+
+    connection.close()
+
+    if not menu:
+        await update.message.reply_text(
+            "❌ لم يتم العثور على القائمة."
+        )
+        return
+
+    # حفظ القائمة الحالية
+    context.user_data["current_menu_id"] = menu["id"]
+
+    # حفظ اسم القائمة
+    context.user_data["current_menu_name"] = menu["name"]
+
+    await update.message.reply_text(
+        f"📁 {menu['name']}\n\n"
+        "اختر من الفروع أو المحتوى:",
+        reply_markup=menu_keyboard(menu["id"]),
+    )
+
+
+# =========================================================
+# /start
+# =========================================================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    # تنظيف حالة الإدارة
+    context.user_data.clear()
 
     keyboard = ReplyKeyboardMarkup(
         MAIN_KEYBOARD,
@@ -41,6 +176,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# =========================================================
+# /admin
+# =========================================================
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
@@ -53,31 +192,96 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    keyboard = ReplyKeyboardMarkup(
-        [
-            ["➕ إضافة قائمة"],
-            ["📋 إدارة القوائم"],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    context.user_data.clear()
 
     await update.message.reply_text(
         "⚙️ لوحة تحكم المشرف\n\n"
         "اختر العملية التي تريد تنفيذها:",
-        reply_markup=keyboard,
+        reply_markup=admin_keyboard(),
     )
 
+
+# =========================================================
+# معالجة الرسائل
+# =========================================================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text
 
-    # ==========================================
+    # =====================================================
+    # إلغاء أي عملية عند الضغط على رجوع
+    # =====================================================
+
+    if text == "◀️ رجوع":
+
+        # إلغاء عمليات الإدخال
+        context.user_data.pop("adding_menu", None)
+        context.user_data.pop("adding_branch", None)
+        context.user_data.pop("adding_text", None)
+        context.user_data.pop("waiting_text_content", None)
+        context.user_data.pop("adding_photo", None)
+        context.user_data.pop("waiting_photo", None)
+        context.user_data.pop("adding_video", None)
+        context.user_data.pop("waiting_video", None)
+        context.user_data.pop("content_title", None)
+
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        # إذا كنا داخل قائمة
+        if current_menu_id:
+
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT parent_id
+                FROM menus
+                WHERE id = ?
+                """,
+                (current_menu_id,),
+            )
+
+            current_menu = cursor.fetchone()
+
+            connection.close()
+
+            if current_menu:
+
+                parent_id = current_menu["parent_id"]
+
+                # إذا يوجد أب، نرجع إليه
+                if parent_id:
+
+                    await show_menu(
+                        update,
+                        context,
+                        parent_id,
+                    )
+
+                    return
+
+        # إذا لا يوجد أب، نرجع للوحة الإدارة
+        context.user_data.clear()
+
+        await update.message.reply_text(
+            "⚙️ لوحة تحكم المشرف\n\n"
+            "اختر العملية التي تريد تنفيذها:",
+            reply_markup=admin_keyboard(),
+        )
+
+        return
+
+    # =====================================================
     # إضافة قائمة رئيسية
-    # ==========================================
+    # =====================================================
 
     if text == "➕ إضافة قائمة":
+
+        context.user_data.clear()
 
         context.user_data["adding_menu"] = True
 
@@ -88,9 +292,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # ==========================================
+    # =====================================================
     # حفظ القائمة الرئيسية
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("adding_menu"):
 
@@ -106,21 +310,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (text, None, 0),
         )
 
+        menu_id = cursor.lastrowid
+
         connection.commit()
         connection.close()
 
         context.user_data["adding_menu"] = False
+        context.user_data["current_menu_id"] = menu_id
 
         await update.message.reply_text(
             "✅ تم إنشاء القائمة بنجاح\n\n"
             f"📁 {text}"
         )
 
+        # تحديث القائمة مباشرة
+        await show_menu(
+            update,
+            context,
+            menu_id,
+        )
+
         return
 
-    # ==========================================
+    # =====================================================
     # إدارة القوائم
-    # ==========================================
+    # =====================================================
 
     if text == "📋 إدارة القوائم":
 
@@ -143,7 +357,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not menus:
 
             await update.message.reply_text(
-                "📋 لا توجد قوائم منشأة حتى الآن."
+                "📋 لا توجد قوائم منشأة حتى الآن.",
+                reply_markup=admin_keyboard(),
             )
 
             return
@@ -151,10 +366,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
 
         for menu in menus:
-
             keyboard.append(
                 [f"📁 {menu['name']}"]
             )
+
+        keyboard.append(["◀️ رجوع"])
 
         await update.message.reply_text(
             "📋 القوائم الرئيسية:\n\n"
@@ -168,146 +384,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # ==========================================
-    # فتح القائمة
-    # ==========================================
-
-    if text.startswith("📁 "):
-
-        menu_name = text[2:].strip()
-
-        connection = get_connection()
-        cursor = connection.cursor()
-
-        cursor.execute(
-            """
-            SELECT id, name, parent_id
-            FROM menus
-            WHERE name = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (menu_name,),
-        )
-
-        menu = cursor.fetchone()
-
-        if not menu:
-
-            connection.close()
-
-            await update.message.reply_text(
-                "❌ لم يتم العثور على هذه القائمة."
-            )
-
-            return
-
-        menu_id = menu["id"]
-
-        context.user_data["current_menu_id"] = menu_id
-
-        # ------------------------------------------
-        # جلب الفروع
-        # ------------------------------------------
-
-        cursor.execute(
-            """
-            SELECT id, name
-            FROM menus
-            WHERE parent_id = ?
-            ORDER BY sort_order, id
-            """,
-            (menu_id,),
-        )
-
-        branches = cursor.fetchall()
-
-        # ------------------------------------------
-        # جلب المحتوى
-        # ------------------------------------------
-
-        cursor.execute(
-            """
-            SELECT id, title, content_type
-            FROM contents
-            WHERE menu_id = ?
-            ORDER BY sort_order, id
-            """,
-            (menu_id,),
-        )
-
-        contents = cursor.fetchall()
-
-        connection.close()
-
-        keyboard = []
-
-        # الفروع
-        for branch in branches:
-
-            keyboard.append(
-                [f"📁 {branch['name']}"]
-            )
-
-        # المحتوى
-        for content in contents:
-
-            if content["content_type"] == "text":
-
-                icon = "📝"
-
-            elif content["content_type"] == "photo":
-
-                icon = "🖼️"
-
-            elif content["content_type"] == "video":
-
-                icon = "🎬"
-
-            else:
-
-                icon = "📄"
-
-            keyboard.append(
-                [f"{icon} {content['title']}"]
-            )
-
-        # خيارات الإدارة
-        keyboard.append(
-            ["➕ إضافة فرع"]
-        )
-
-        keyboard.append(
-            ["📝 إضافة نص"]
-        )
-
-        keyboard.append(
-            ["🖼️ إضافة صورة"]
-        )
-
-        keyboard.append(
-            ["🎬 إضافة فيديو"]
-        )
-
-        keyboard.append(
-            ["◀️ رجوع"]
-        )
-
-        await update.message.reply_text(
-            f"📁 {menu['name']}\n\n"
-            "اختر من الفروع أو المحتوى:",
-            reply_markup=ReplyKeyboardMarkup(
-                keyboard,
-                resize_keyboard=True,
-                is_persistent=True,
-            ),
-        )
-
-        return
-
-    # ==========================================
+    # =====================================================
     # إضافة فرع
-    # ==========================================
+    # =====================================================
 
     if text == "➕ إضافة فرع":
 
@@ -323,18 +402,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             return
 
+        # إلغاء الحالات السابقة
+        context.user_data.pop("adding_text", None)
+        context.user_data.pop("waiting_text_content", None)
+        context.user_data.pop("adding_photo", None)
+        context.user_data.pop("waiting_photo", None)
+        context.user_data.pop("adding_video", None)
+        context.user_data.pop("waiting_video", None)
+
         context.user_data["adding_branch"] = True
 
         await update.message.reply_text(
             "➕ إضافة فرع\n\n"
-            "أرسل اسم الفرع الجديد:"
+            "أرسل اسم الفرع الجديد:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
         )
 
         return
 
-    # ==========================================
+    # =====================================================
     # حفظ الفرع
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("adding_branch"):
 
@@ -354,6 +442,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (text, current_menu_id, 0),
         )
 
+        new_branch_id = cursor.lastrowid
+
         connection.commit()
         connection.close()
 
@@ -364,11 +454,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📁 {text}"
         )
 
+        # تحديث القائمة مباشرة
+        await show_menu(
+            update,
+            context,
+            current_menu_id,
+        )
+
         return
 
-    # ==========================================
+    # =====================================================
     # إضافة نص
-    # ==========================================
+    # =====================================================
 
     if text == "📝 إضافة نص":
 
@@ -388,14 +485,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "📝 إضافة نص\n\n"
-            "أرسل عنوان النص:"
+            "أرسل عنوان النص:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
         )
 
         return
 
-    # ==========================================
+    # =====================================================
     # عنوان النص
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("adding_text"):
 
@@ -404,14 +502,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["waiting_text_content"] = True
 
         await update.message.reply_text(
-            "✍️ الآن أرسل محتوى النص:"
+            "✍️ الآن أرسل محتوى النص:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
         )
 
         return
 
-    # ==========================================
+    # =====================================================
     # حفظ النص
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("waiting_text_content"):
 
@@ -462,11 +561,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 {title}"
         )
 
+        # تحديث القائمة مباشرة
+        await show_menu(
+            update,
+            context,
+            current_menu_id,
+        )
+
         return
 
-    # ==========================================
+    # =====================================================
     # إضافة صورة
-    # ==========================================
+    # =====================================================
 
     if text == "🖼️ إضافة صورة":
 
@@ -486,39 +592,85 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "🖼️ إضافة صورة\n\n"
-            "أرسل عنوان الصورة:"
+            "أرسل عنوان الصورة:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
         )
 
         return
 
-    # ==========================================
+    # =====================================================
     # عنوان الصورة
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("adding_photo"):
 
         context.user_data["content_title"] = text
-
         context.user_data["adding_photo"] = False
-
         context.user_data["waiting_photo"] = True
 
         await update.message.reply_text(
-            "📷 الآن أرسل الصورة:"
+            "📷 الآن أرسل الصورة:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
         )
 
         return
 
-    # ==========================================
+    # =====================================================
+    # إضافة فيديو
+    # =====================================================
+
+    if text == "🎬 إضافة فيديو":
+
+        current_menu_id = context.user_data.get(
+            "current_menu_id"
+        )
+
+        if not current_menu_id:
+
+            await update.message.reply_text(
+                "❌ لم يتم تحديد القائمة الحالية."
+            )
+
+            return
+
+        context.user_data["adding_video"] = True
+
+        await update.message.reply_text(
+            "🎬 إضافة فيديو\n\n"
+            "أرسل عنوان الفيديو:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
+        )
+
+        return
+
+    # =====================================================
+    # عنوان الفيديو
+    # =====================================================
+
+    if context.user_data.get("adding_video"):
+
+        context.user_data["content_title"] = text
+        context.user_data["adding_video"] = False
+        context.user_data["waiting_video"] = True
+
+        await update.message.reply_text(
+            "🎥 الآن أرسل الفيديو:\n\n"
+            "أو اضغط ◀️ رجوع للإلغاء."
+        )
+
+        return
+
+    # =====================================================
     # استقبال الصورة
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("waiting_photo"):
 
         if not update.message.photo:
 
             await update.message.reply_text(
-                "❌ أرسل صورة من فضلك."
+                "❌ أرسل صورة من فضلك.\n\n"
+                "أو اضغط ◀️ رجوع للإلغاء."
             )
 
             return
@@ -532,7 +684,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         file_id = update.message.photo[-1].file_id
-
         caption = update.message.caption
 
         connection = get_connection()
@@ -576,63 +727,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🖼️ {title}"
         )
 
-        return
-
-    # ==========================================
-    # إضافة فيديو
-    # ==========================================
-
-    if text == "🎬 إضافة فيديو":
-
-        current_menu_id = context.user_data.get(
-            "current_menu_id"
-        )
-
-        if not current_menu_id:
-
-            await update.message.reply_text(
-                "❌ لم يتم تحديد القائمة الحالية."
-            )
-
-            return
-
-        context.user_data["adding_video"] = True
-
-        await update.message.reply_text(
-            "🎬 إضافة فيديو\n\n"
-            "أرسل عنوان الفيديو:"
+        # تحديث القائمة مباشرة
+        await show_menu(
+            update,
+            context,
+            current_menu_id,
         )
 
         return
 
-    # ==========================================
-    # عنوان الفيديو
-    # ==========================================
-
-    if context.user_data.get("adding_video"):
-
-        context.user_data["content_title"] = text
-
-        context.user_data["adding_video"] = False
-
-        context.user_data["waiting_video"] = True
-
-        await update.message.reply_text(
-            "🎥 الآن أرسل الفيديو:"
-        )
-
-        return
-
-    # ==========================================
+    # =====================================================
     # استقبال الفيديو
-    # ==========================================
+    # =====================================================
 
     if context.user_data.get("waiting_video"):
 
         if not update.message.video:
 
             await update.message.reply_text(
-                "❌ أرسل فيديو من فضلك."
+                "❌ أرسل فيديو من فضلك.\n\n"
+                "أو اضغط ◀️ رجوع للإلغاء."
             )
 
             return
@@ -646,7 +760,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         file_id = update.message.video.file_id
-
         caption = update.message.caption
 
         connection = get_connection()
@@ -690,15 +803,66 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎬 {title}"
         )
 
+        # تحديث القائمة مباشرة
+        await show_menu(
+            update,
+            context,
+            current_menu_id,
+        )
+
         return
 
-    # ==========================================
-    # فتح المحتوى
-    # ==========================================
+    # =====================================================
+    # فتح قائمة / فرع
+    # =====================================================
 
-    if text.startswith("📝 ") or \
-       text.startswith("🖼️ ") or \
-       text.startswith("🎬 "):
+    if text.startswith("📁 "):
+
+        menu_name = text[2:].strip()
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM menus
+            WHERE name = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (menu_name,),
+        )
+
+        menu = cursor.fetchone()
+
+        connection.close()
+
+        if not menu:
+
+            await update.message.reply_text(
+                "❌ لم يتم العثور على القائمة."
+            )
+
+            return
+
+        await show_menu(
+            update,
+            context,
+            menu["id"],
+        )
+
+        return
+
+    # =====================================================
+    # فتح المحتوى
+    # =====================================================
+
+    if (
+        text.startswith("📝 ")
+        or text.startswith("🖼️ ")
+        or text.startswith("🎬 ")
+    ):
 
         title = text[2:].strip()
 
@@ -739,49 +903,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_photo(
                 photo=content["file_id"],
-                caption=content["caption"] or ""
+                caption=content["caption"] or "",
             )
 
         elif content["content_type"] == "video":
 
             await update.message.reply_video(
                 video=content["file_id"],
-                caption=content["caption"] or ""
+                caption=content["caption"] or "",
             )
 
         return
 
-    # ==========================================
-    # رجوع
-    # ==========================================
-
-    if text == "◀️ رجوع":
-
-        context.user_data.pop(
-            "current_menu_id",
-            None
-        )
-
-        keyboard = ReplyKeyboardMarkup(
-            [
-                ["➕ إضافة قائمة"],
-                ["📋 إدارة القوائم"],
-            ],
-            resize_keyboard=True,
-            is_persistent=True,
-        )
-
-        await update.message.reply_text(
-            "⚙️ لوحة تحكم المشرف\n\n"
-            "اختر العملية التي تريد تنفيذها:",
-            reply_markup=keyboard,
-        )
-
-        return
-
-    # ==========================================
+    # =====================================================
     # القوائم العامة
-    # ==========================================
+    # =====================================================
 
     if text == "📖 القرآن والثقافة":
 
@@ -811,6 +947,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "منصة ثقافية قيد التطوير."
         )
 
+
+# =========================================================
+# تشغيل البوت
+# =========================================================
 
 def main():
 
@@ -847,6 +987,7 @@ def main():
         )
     )
 
+    # الرسائل النصية
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -854,7 +995,7 @@ def main():
         )
     )
 
-    # استقبال الصور والفيديوهات
+    # الصور والفيديوهات
     app.add_handler(
         MessageHandler(
             filters.PHOTO | filters.VIDEO,
@@ -864,7 +1005,7 @@ def main():
 
     print(
         "✅ Bot is running...",
-        flush=True
+        flush=True,
     )
 
     app.run_polling()
