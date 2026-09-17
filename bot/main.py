@@ -68,7 +68,43 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    if text == "📋 إدارة القوائم":
+        connection = get_connection()
+        cursor = connection.cursor()
 
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM menus
+            WHERE parent_id IS NULL
+            ORDER BY sort_order, id
+            """
+        )
+
+        menus = cursor.fetchall()
+        connection.close()
+
+        if not menus:
+            await update.message.reply_text(
+                "📋 لا توجد قوائم منشأة حتى الآن."
+            )
+            return
+
+        keyboard = []
+
+        for menu in menus:
+            keyboard.append([f"📁 {menu['name']}"])
+
+        await update.message.reply_text(
+            "📋 القوائم الرئيسية:\n\n"
+            "اختر القائمة التي تريد إدارتها:",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard,
+                resize_keyboard=True,
+                is_persistent=True,
+            ),
+        )
+        return
     # إضافة قائمة جديدة
     if text == "➕ إضافة قائمة":
         context.user_data["adding_menu"] = True
