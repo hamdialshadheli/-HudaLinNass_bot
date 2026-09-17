@@ -105,6 +105,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         )
         return
+            # فتح قائمة لإدارتها
+    if text.startswith("📁 "):
+        menu_name = text[3:]
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM menus
+            WHERE name = ? AND parent_id IS NULL
+            ORDER BY sort_order, id
+            """,
+            (menu_name,),
+        )
+
+        menu = cursor.fetchone()
+        connection.close()
+
+        if menu:
+            context.user_data["current_menu_id"] = menu["id"]
+
+            keyboard = ReplyKeyboardMarkup(
+                [
+                    ["➕ إضافة فرع"],
+                    ["📝 إضافة نص"],
+                    ["🖼️ إضافة صورة"],
+                    ["🎥 إضافة فيديو"],
+                    ["⬅️ رجوع"],
+                ],
+                resize_keyboard=True,
+                is_persistent=True,
+            )
+
+            await update.message.reply_text(
+                f"📁 {menu['name']}\n\n"
+                "⚙️ إدارة القائمة\n\n"
+                "اختر العملية:",
+                reply_markup=keyboard,
+            )
+            return
     # إضافة قائمة جديدة
     if text == "➕ إضافة قائمة":
         context.user_data["adding_menu"] = True
