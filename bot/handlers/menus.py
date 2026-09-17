@@ -1,13 +1,22 @@
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.database import get_connection, next_display_order
-from bot.keyboards import admin_keyboard
+from bot.database import (
+    get_connection,
+    next_display_order,
+)
+
+from bot.keyboards import (
+    admin_keyboard,
+    menu_management_keyboard,
+    menu_navigation_keyboard,
+)
 
 
 def clean_menu_name(text):
     if text.startswith("📂 "):
         return text[3:].strip()
+
     return text.strip()
 
 
@@ -25,22 +34,45 @@ async def show_menu(update, context, menu_id):
 
     if not menu:
         connection.close()
-        await update.message.reply_text("❌ القائمة غير موجودة.")
+
+        await update.message.reply_text(
+            "❌ القائمة غير موجودة."
+        )
+
         return
 
+    # حفظ مكان المستخدم الحالي
     context.user_data["current_menu_id"] = menu["id"]
     context.user_data["current_menu_name"] = menu["name"]
 
+    # حفظ مسار القوائم
+    if "menu_path" not in context.user_data:
+        context.user_data["menu_path"] = []
+
+    path = context.user_data["menu_path"]
+
+    if not path or path[-1] != menu["id"]:
+        path.append(menu["id"])
+
     items = []
 
+    # =========================
     # الفروع
+    # =========================
+
     children = connection.execute(
         """
-        SELECT id, name, display_order
+        SELECT
+            id,
+            name,
+            display_order
         FROM menus
         WHERE parent_id = ?
         ORDER BY
-            CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+            CASE
+                WHEN display_order IS NULL THEN 1
+                ELSE 0
+            END,
             display_order,
             id
         """,
@@ -52,19 +84,27 @@ async def show_menu(update, context, menu_id):
             (
                 child["display_order"],
                 f"📂 {child['name']}",
-                "menu",
-                child["id"],
             )
         )
 
-    # المحتويات
+    # =========================
+    # المحتوى
+    # =========================
+
     contents = connection.execute(
         """
-        SELECT id, title, content_type, display_order
+        SELECT
+            id,
+            title,
+            content_type,
+            display_order
         FROM contents
         WHERE menu_id = ?
         ORDER BY
-            CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+            CASE
+                WHEN display_order IS NULL THEN 1
+                ELSE 0
+            END,
             display_order,
             id
         """,
@@ -90,19 +130,26 @@ async def show_menu(update, context, menu_id):
             (
                 content["display_order"],
                 f"{icon} {content['title']}",
-                "content",
-                content["id"],
             )
         )
 
+    # =========================
     # مجموعات الوسائط
+    # =========================
+
     groups = connection.execute(
         """
-        SELECT id, title, display_order
+        SELECT
+            id,
+            title,
+            display_order
         FROM media_groups
         WHERE menu_id = ?
         ORDER BY
-            CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+            CASE
+                WHEN display_order IS NULL THEN 1
+                ELSE 0
+            END,
             display_order,
             id
         """,
@@ -114,52 +161,41 @@ async def show_menu(update, context, menu_id):
             (
                 group["display_order"],
                 f"🖼️🎥🎧 {group['title']}",
-                "group",
-                group["id"],
             )
         )
 
     connection.close()
 
+    # ترتيب جميع العناصر
     items.sort(
         key=lambda item: (
             item[0] is None,
-            item[0] if item[0] is not None else 999999,
+            item[0]
+            if item[0] is not None
+            else 999999,
         )
     )
 
-    keyboard = []
+    labels = [
+        item[1]
+        for item in items
+    ]
 
-    for _, label, _, _ in items:
-        keyboard.append([label])
-
-    # أزرار الإدارة تظهر فقط للمشرف
-    from bot.database import is_admin
-
-    if is_admin(update.effective_user.id):
-        keyboard.extend(
-            [
-                ["➕ إضافة فرع"],
-                ["➕ إضافة محتوى"],
-                ["✏️ تعديل المحتوى"],
-                ["🗑️ حذف المحتوى"],
-                ["↕️ ترتيب العناصر"],
-            ]
-        )
-
-    # زر الرجوع موجود دائمًا
-    keyboard.append(["◀️ رجوع"])
+    keyboard = menu_navigation_keyboard(
+        labels
+    )
 
     await update.message.reply_text(
         f"📂 {menu['name']}",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True,
-        ),
+        reply_markup=keyboard,
     )
 
 
-async def create_root_menu(update, context, name):
+async def create_root_menu(
+    update,
+    context,
+    name,
+):
     name = name.strip()
 
     if not name:
@@ -183,14 +219,20 @@ async def create_root_menu(update, context, name):
 
     if existing:
         connection.close()
+
         await update.message.reply_text(
             "⚠️ توجد قائمة رئيسية بهذا الاسم بالفعل."
         )
+
         return
 
     display_order = connection.execute(
         """
-        SELECT COALESCE(MAX(display_order), -1) + 1
+        SELECT
+            COALESCE(
+                MAX(display_order),
+                -1
+            ) + 1
         FROM menus
         WHERE parent_id IS NULL
         """
@@ -220,6 +262,8 @@ async def create_root_menu(update, context, name):
     connection.commit()
     connection.close()
 
+    context.user_data["menu_path"] = []
+
     await update.message.reply_text(
         f"✅ تم إنشاء القائمة الرئيسية:\n\n"
         f"📂 {name}"
@@ -232,7 +276,12 @@ async def create_root_menu(update, context, name):
     )
 
 
-async def create_child_menu(update, context, parent_id, name):
+async def create_child_menu(
+    update,
+    context,
+    parent_id,
+    name,
+):
     name = name.strip()
 
     if not name:
@@ -265,16 +314,24 @@ async def create_child_menu(update, context, parent_id, name):
 
     if existing:
         connection.close()
+
         await update.message.reply_text(
             "⚠️ يوجد فرع بهذا الاسم داخل هذه القائمة بالفعل."
         )
+
         return
 
-    display_order = next_display_order(parent_id)
+    display_order = next_display_order(
+        parent_id
+    )
 
     sort_order = connection.execute(
         """
-        SELECT COALESCE(MAX(sort_order), -1) + 1
+        SELECT
+            COALESCE(
+                MAX(sort_order),
+                -1
+            ) + 1
         FROM menus
         WHERE parent_id = ?
         """,
@@ -306,6 +363,7 @@ async def create_child_menu(update, context, parent_id, name):
     connection.commit()
     connection.close()
 
+    # الفرع الجديد يصبح القائمة الحالية
     await update.message.reply_text(
         f"✅ تم إنشاء الفرع:\n\n"
         f"📂 {name}"
@@ -318,7 +376,10 @@ async def create_child_menu(update, context, parent_id, name):
     )
 
 
-async def go_back_one_level(update, context):
+async def go_back_one_level(
+    update,
+    context,
+):
     current_menu_id = context.user_data.get(
         "current_menu_id"
     )
@@ -334,7 +395,10 @@ async def go_back_one_level(update, context):
 
     current_menu = connection.execute(
         """
-        SELECT id, name, parent_id
+        SELECT
+            id,
+            name,
+            parent_id
         FROM menus
         WHERE id = ?
         """,
@@ -344,34 +408,34 @@ async def go_back_one_level(update, context):
     connection.close()
 
     if not current_menu:
-        context.user_data.pop(
-            "current_menu_id",
-            None,
-        )
-
-        context.user_data.pop(
-            "current_menu_name",
-            None,
-        )
+        context.user_data.clear()
 
         await update.message.reply_text(
             "⚙️ لوحة إدارة البوت",
             reply_markup=admin_keyboard(),
         )
+
         return
 
     parent_id = current_menu["parent_id"]
 
-    # إذا كانت قائمة فرعية، ارجع للأب
+    # =========================
+    # إذا كان فرعًا
+    # =========================
+
     if parent_id is not None:
         await show_menu(
             update,
             context,
             parent_id,
         )
+
         return
 
-    # إذا كانت قائمة رئيسية، ارجع إلى لوحة الإدارة
+    # =========================
+    # إذا كانت قائمة رئيسية
+    # =========================
+
     context.user_data.pop(
         "current_menu_id",
         None,
@@ -379,6 +443,11 @@ async def go_back_one_level(update, context):
 
     context.user_data.pop(
         "current_menu_name",
+        None,
+    )
+
+    context.user_data.pop(
+        "menu_path",
         None,
     )
 
