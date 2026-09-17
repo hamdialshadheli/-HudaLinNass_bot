@@ -10,7 +10,7 @@ from telegram.ext import (
     filters,
 )
 
-from database import initialize_database
+from database import initialize_database, get_connection
 
 
 load_dotenv()
@@ -69,10 +69,37 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
+    # إضافة قائمة جديدة
     if text == "➕ إضافة قائمة":
+        context.user_data["adding_menu"] = True
+
         await update.message.reply_text(
             "➕ إضافة قائمة\n\n"
             "أرسل اسم القائمة الجديدة:"
+        )
+        return
+
+    # استقبال اسم القائمة وحفظه
+    if context.user_data.get("adding_menu"):
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO menus (name, parent_id, sort_order)
+            VALUES (?, ?, ?)
+            """,
+            (text, None, 0),
+        )
+
+        connection.commit()
+        connection.close()
+
+        context.user_data["adding_menu"] = False
+
+        await update.message.reply_text(
+            f"✅ تم إنشاء القائمة بنجاح\n\n"
+            f"📁 {text}"
         )
         return
 
