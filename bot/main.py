@@ -60,11 +60,14 @@ from bot.handlers.media_groups import (
     start_media_group,
     receive_group_title,
     receive_group_description,
-    receive_group_media,
     finish_media_group,
     open_media_group,
 )
 
+
+# ============================================================
+# الإعدادات
+# ============================================================
 
 load_dotenv()
 
@@ -72,62 +75,59 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = os.getenv("ADMIN_ID")
 
 
-# ============================================================
-# التحقق من الإعدادات
-# ============================================================
-
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN غير موجود")
+    raise RuntimeError("BOT_TOKEN غير موجود في GitHub Secrets")
 
 if not ADMIN_ID:
-    raise RuntimeError("ADMIN_ID غير موجود")
+    raise RuntimeError("ADMIN_ID غير موجود في GitHub Secrets")
 
 
 # ============================================================
-# البداية
-# ============================================================
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
-    if user:
-        register_user(user)
-
-    context.user_data.clear()
-
-    await show_public_home(update, context)
-
-
-# ============================================================
-# واجهة المستخدم
+# واجهة المستخدم الرئيسية
 # ============================================================
 
 async def show_public_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_admin_user = is_admin(update.effective_user.id)
 
-    # إنشاء لوحة المستخدم
     keyboard = user_keyboard(
         is_admin_user=is_admin_user
     )
 
-    # اختبار لمعرفة لوحة المفاتيح التي يبنيها البوت فعلياً
+    # تشخيص لوحة المفاتيح التي يتم إنشاؤها فعلياً
     print(
         "USER KEYBOARD RUNTIME:",
         keyboard.keyboard,
         flush=True
     )
 
-    # إزالة لوحة المفاتيح القديمة أولاً
+    # إزالة لوحة المفاتيح القديمة
     await update.message.reply_text(
         "🔄",
         reply_markup=ReplyKeyboardRemove()
     )
 
-    # إرسال الواجهة الجديدة
+    # إرسال واجهة المستخدم الجديدة
     await update.message.reply_text(
         "🌿 مرحباً بك في هدى للناس",
         reply_markup=keyboard
+    )
+
+
+# ============================================================
+# أمر /start
+# ============================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user:
+        register_user(update.effective_user)
+
+    context.user_data.clear()
+
+    await show_public_home(
+        update,
+        context
     )
 
 
@@ -138,9 +138,11 @@ async def show_public_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_admin(update.effective_user.id):
+
         await update.message.reply_text(
             "❌ ليس لديك صلاحية الدخول إلى لوحة الإدارة."
         )
+
         return
 
     context.user_data.clear()
@@ -152,19 +154,13 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# القائمة الرئيسية
+# معالجة الرسائل النصية
 # ============================================================
 
-async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await show_public_home(update, context)
-
-
-# ============================================================
-# التعامل مع الرسائل
-# ============================================================
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not update.message:
         return
@@ -173,12 +169,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
 
-    # تسجيل المستخدم
     register_user(update.effective_user)
 
-    # --------------------------------------------------------
-    # الإدارة
-    # --------------------------------------------------------
+    # ========================================================
+    # واجهة الإدارة
+    # ========================================================
 
     if text == "⚙️ الإدارة":
 
@@ -191,43 +186,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
-    # العودة إلى واجهة المستخدم
-    # --------------------------------------------------------
+    # ========================================================
+    # واجهة المستخدم
+    # ========================================================
 
     if text == "👤 واجهة المستخدم":
 
         context.user_data.clear()
 
-        await show_public_home(update, context)
+        await show_public_home(
+            update,
+            context
+        )
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # القائمة الرئيسية
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "🏠 القائمة الرئيسية":
 
         context.user_data.clear()
 
-        await show_public_home(update, context)
+        await show_public_home(
+            update,
+            context
+        )
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # رجوع
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "◀️ رجوع":
 
-        await go_back_one_level(update, context)
+        await go_back_one_level(
+            update,
+            context
+        )
 
         return
 
-    # --------------------------------------------------------
-    # الإدارة
-    # --------------------------------------------------------
+    # ========================================================
+    # إنشاء قائمة رئيسية
+    # ========================================================
 
     if text == "➕ إنشاء قائمة":
 
@@ -237,27 +241,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = "creating_root_menu"
 
         await update.message.reply_text(
-            "✏️ أرسل اسم القائمة الرئيسية الجديدة:",
+            "✏️ أرسل اسم القائمة الرئيسية الجديدة:"
         )
 
         return
 
-    if text == "📂 إدارة القوائم" or text == "📋 إدارة القوائم":
+    # ========================================================
+    # إدارة القوائم
+    # ========================================================
+
+    if text in (
+        "📂 إدارة القوائم",
+        "📋 إدارة القوائم",
+    ):
 
         if not is_admin(user_id):
             return
 
-        connection = __import__(
-            "bot.database",
-            fromlist=["get_connection"]
-        ).get_connection()
+        from bot.database import get_connection
+
+        connection = get_connection()
 
         roots = connection.execute("""
             SELECT id, name
             FROM menus
             WHERE parent_id IS NULL
             ORDER BY
-                CASE WHEN display_order IS NULL THEN 1 ELSE 0 END,
+                CASE
+                    WHEN display_order IS NULL THEN 1
+                    ELSE 0
+                END,
                 display_order,
                 id
         """).fetchall()
@@ -275,11 +288,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
 
         for root in roots:
+
             keyboard.append([
                 f"📂 {root['name']}"
             ])
 
-        keyboard.append(["◀️ رجوع"])
+        keyboard.append([
+            "◀️ رجوع"
+        ])
+
+        context.user_data["state"] = "managing_root_menus"
 
         await update.message.reply_text(
             "📋 القوائم الرئيسية:",
@@ -289,13 +307,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-        context.user_data["state"] = "managing_root_menus"
-
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إضافة فرع
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "➕ إضافة فرع":
 
@@ -322,24 +338,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إضافة محتوى
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "➕ إضافة محتوى":
 
         if not is_admin(user_id):
             return
 
-        await start_add_content(update, context)
+        await start_add_content(
+            update,
+            context
+        )
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # أنواع المحتوى
-    # --------------------------------------------------------
+    # ========================================================
 
-    if text in [
+    if text in (
         "📝 نص",
         "🖼️ صورة",
         "🎥 فيديو",
@@ -347,7 +366,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📄 ملف",
         "🔗 رابط",
         "🖼️🎥🎧 مجموعة وسائط",
-    ]:
+    ):
 
         if not is_admin(user_id):
             return
@@ -360,9 +379,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # تعديل المحتوى
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "✏️ تعديل المحتوى":
 
@@ -376,9 +395,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # حذف المحتوى
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "🗑️ حذف المحتوى":
 
@@ -392,9 +411,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # ترتيب العناصر
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "↕️ ترتيب العناصر":
 
@@ -402,14 +421,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await update.message.reply_text(
-            "↕️ سيتم تجهيز ترتيب العناصر في الخطوة التالية."
+            "↕️ وظيفة ترتيب العناصر موجودة في النظام، "
+            "وسنختبرها بعد التأكد من عمل الواجهات."
         )
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # المشرفون
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "👥 المشرفون":
 
@@ -423,9 +443,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # الإحصائيات
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "📊 الإحصائيات":
 
@@ -439,9 +459,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إضافة مشرف
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "➕ إضافة مشرف":
 
@@ -455,9 +475,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # حذف مشرف
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "🗑️ حذف مشرف":
 
@@ -471,20 +491,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إلغاء
-    # --------------------------------------------------------
+    # ========================================================
 
     if text == "❌ إلغاء":
 
         context.user_data.clear()
 
-        await admin(update, context)
+        await admin(
+            update,
+            context
+        )
 
         return
 
     # ========================================================
-    # الحالات التي تنتظر إدخالاً من المستخدم
+    # الحالات الخاصة بالإدخال
     # ========================================================
 
     state = context.user_data.get("state")
@@ -572,7 +595,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # --------------------------------------------------------
-    # تعديل
+    # تعديل المحتوى
     # --------------------------------------------------------
 
     if state == "editing_content":
@@ -585,7 +608,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # --------------------------------------------------------
-    # معرف المشرف
+    # إضافة مشرف
     # --------------------------------------------------------
 
     if state == "adding_admin":
@@ -636,12 +659,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # --------------------------------------------------------
-    # إذا لم تنطبق أي حالة
-    # --------------------------------------------------------
+    # ========================================================
+    # فتح قائمة موجودة
+    # ========================================================
 
-    await update.message.reply_text(
-        "ℹ️ اختر أحد الخيارات من القائمة."
+    if text.startswith("📂 "):
+
+        menu_name = text[3:].strip()
+
+        from bot.database import get_connection
+
+        connection = get_connection()
+
+        menu = connection.execute("""
+            SELECT id
+            FROM menus
+            WHERE name = ?
+            LIMIT 1
+        """, (menu_name,)).fetchone()
+
+        connection.close()
+
+        if menu:
+
+            await show_menu(
+                update,
+                context,
+                menu["id"]
+            )
+
+            return
+
+    # ========================================================
+    # محاولة فتح محتوى
+    # ========================================================
+
+    await open_content_by_title(
+        update,
+        context,
+        text
     )
 
 
@@ -649,7 +705,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # استقبال الصور
 # ============================================================
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_photo(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     state = context.user_data.get("state")
 
@@ -662,21 +721,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    if state == "media_group_collecting":
-
-        await receive_group_media(
-            update,
-            context
-        )
-
-        return
-
 
 # ============================================================
 # استقبال الفيديو
 # ============================================================
 
-async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_video(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     state = context.user_data.get("state")
 
@@ -689,21 +742,15 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    if state == "media_group_collecting":
-
-        await receive_group_media(
-            update,
-            context
-        )
-
-        return
-
 
 # ============================================================
 # استقبال الصوت
 # ============================================================
 
-async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_audio(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     state = context.user_data.get("state")
 
@@ -716,21 +763,15 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    if state == "media_group_collecting":
-
-        await receive_group_media(
-            update,
-            context
-        )
-
-        return
-
 
 # ============================================================
 # استقبال الملفات
 # ============================================================
 
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_document(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     state = context.user_data.get("state")
 
@@ -745,7 +786,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# بدء البوت
+# تشغيل البوت
 # ============================================================
 
 def main():
@@ -773,9 +814,9 @@ def main():
         .build()
     )
 
-    # ------------------------------------
-    # Commands
-    # ------------------------------------
+    # --------------------------------------------------------
+    # /start
+    # --------------------------------------------------------
 
     application.add_handler(
         CommandHandler(
@@ -784,9 +825,9 @@ def main():
         )
     )
 
-    # ------------------------------------
-    # الرسائل النصية
-    # ------------------------------------
+    # --------------------------------------------------------
+    # النصوص
+    # --------------------------------------------------------
 
     application.add_handler(
         MessageHandler(
@@ -795,9 +836,9 @@ def main():
         )
     )
 
-    # ------------------------------------
+    # --------------------------------------------------------
     # الصور
-    # ------------------------------------
+    # --------------------------------------------------------
 
     application.add_handler(
         MessageHandler(
@@ -806,9 +847,9 @@ def main():
         )
     )
 
-    # ------------------------------------
+    # --------------------------------------------------------
     # الفيديو
-    # ------------------------------------
+    # --------------------------------------------------------
 
     application.add_handler(
         MessageHandler(
@@ -817,9 +858,9 @@ def main():
         )
     )
 
-    # ------------------------------------
+    # --------------------------------------------------------
     # الصوت
-    # ------------------------------------
+    # --------------------------------------------------------
 
     application.add_handler(
         MessageHandler(
@@ -828,9 +869,9 @@ def main():
         )
     )
 
-    # ------------------------------------
+    # --------------------------------------------------------
     # الملفات
-    # ------------------------------------
+    # --------------------------------------------------------
 
     application.add_handler(
         MessageHandler(
@@ -848,6 +889,10 @@ def main():
         drop_pending_updates=True
     )
 
+
+# ============================================================
+# نقطة البداية
+# ============================================================
 
 if __name__ == "__main__":
     main()
