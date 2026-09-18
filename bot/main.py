@@ -103,11 +103,20 @@ async def show_public_home(
         update.effective_user.id
     )
 
+    keyboard = user_keyboard(
+        is_admin_user=is_admin_user
+    )
+
+    # اختبار: معرفة الواجهة التي ينشئها البوت فعليًا
+    print(
+        "PUBLIC KEYBOARD:",
+        keyboard.keyboard,
+        flush=True,
+    )
+
     await update.message.reply_text(
         "🌿 مرحباً بك في هدى للناس",
-        reply_markup=user_keyboard(
-            is_admin_user=is_admin_user
-        ),
+        reply_markup=keyboard,
     )
 
 
@@ -1086,7 +1095,8 @@ def main():
     )
 
     print(
-        "Huda People Bot is running..."
+        "Huda People Bot is running...",
+        flush=True,
     )
 
     application.run_polling()
