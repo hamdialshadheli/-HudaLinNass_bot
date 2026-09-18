@@ -1,3 +1,4 @@
+print("KEYBOARDS.PY NEW VERSION LOADED", flush=True)
 import sqlite3
 from pathlib import Path
 
