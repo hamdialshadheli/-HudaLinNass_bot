@@ -1,7 +1,13 @@
 import os
 
 from dotenv import load_dotenv
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -14,6 +20,7 @@ from bot.database import (
     initialize_database,
     register_user,
     is_admin,
+    get_connection,
 )
 
 from bot.keyboards import (
@@ -87,7 +94,7 @@ if not ADMIN_ID:
 
 
 # ============================================================
-# واجهة المستخدم الرئيسية
+# الواجهة الرئيسية للمستخدم
 # ============================================================
 
 async def show_public_home(
@@ -97,10 +104,10 @@ async def show_public_home(
 
     user_id = update.effective_user.id
 
-    is_admin_user = is_admin(user_id)
+    admin_status = is_admin(user_id)
 
     keyboard = user_keyboard(
-        is_admin_user=is_admin_user
+        is_admin_user=admin_status
     )
 
     print(
@@ -121,7 +128,7 @@ async def show_public_home(
 
     print(
         "IS ADMIN:",
-        is_admin_user,
+        admin_status,
         flush=True
     )
 
@@ -136,7 +143,7 @@ async def show_public_home(
         flush=True
     )
 
-    # إزالة لوحة Telegram القديمة
+    # إزالة لوحة المفاتيح القديمة
     await update.message.reply_text(
         "🔄",
         reply_markup=ReplyKeyboardRemove()
@@ -194,8 +201,7 @@ async def start(
 
     context.user_data.clear()
 
-    # رسالة اختبار للتأكد أن هذه النسخة
-    # هي التي تستقبل أمر /start
+    # رسالة اختبار مؤقتة
     await update.message.reply_text(
         "🧪 TEST VERSION\n\n"
         "إذا ظهرت لك هذه الرسالة، فهذا يعني أن "
@@ -321,7 +327,7 @@ async def handle_message(
         return
 
     # ========================================================
-    # إنشاء قائمة
+    # إنشاء قائمة رئيسية
     # ========================================================
 
     if text == "➕ إنشاء قائمة":
@@ -350,8 +356,6 @@ async def handle_message(
 
         if not is_admin(user_id):
             return
-
-        from bot.database import get_connection
 
         connection = get_connection()
 
@@ -604,16 +608,16 @@ async def handle_message(
         return
 
     # ========================================================
-    # الحالات
+    # قراءة الحالة الحالية
     # ========================================================
 
     state = context.user_data.get(
         "state"
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # إنشاء قائمة رئيسية
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "creating_root_menu":
 
@@ -630,9 +634,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إنشاء فرع
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "creating_child_menu":
 
@@ -654,9 +658,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # عنوان المحتوى
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "content_title":
 
@@ -667,9 +671,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # محتوى نصي
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "content_text":
 
@@ -680,9 +684,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # رابط
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "content_link":
 
@@ -693,9 +697,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
-    # تعديل
-    # --------------------------------------------------------
+    # ========================================================
+    # تعديل المحتوى
+    # ========================================================
 
     if state == "editing_content":
 
@@ -706,9 +710,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # إضافة مشرف
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "adding_admin":
 
@@ -719,9 +723,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # حذف مشرف
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "removing_admin":
 
@@ -732,9 +736,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # عنوان مجموعة الوسائط
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "media_group_title":
 
@@ -745,9 +749,9 @@ async def handle_message(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # وصف مجموعة الوسائط
-    # --------------------------------------------------------
+    # ========================================================
 
     if state == "media_group_description":
 
@@ -765,8 +769,6 @@ async def handle_message(
     if text.startswith("📂 "):
 
         menu_name = text[3:].strip()
-
-        from bot.database import get_connection
 
         connection = get_connection()
 
@@ -861,4 +863,152 @@ async def handle_audio(
 
     if state == "content_audio":
 
-        await
+        await receive_audio_content(
+            update,
+            context
+        )
+
+        return
+
+
+# ============================================================
+# استقبال الملفات
+# ============================================================
+
+async def handle_document(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    state = context.user_data.get(
+        "state"
+    )
+
+    if state == "content_document":
+
+        await receive_document_content(
+            update,
+            context
+        )
+
+        return
+
+
+# ============================================================
+# تشغيل البوت
+# ============================================================
+
+def main():
+
+    print(
+        "========================================",
+        flush=True
+    )
+
+    print(
+        "Huda People Bot is starting...",
+        flush=True
+    )
+
+    print(
+        "========================================",
+        flush=True
+    )
+
+    initialize_database()
+
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
+    )
+
+    # ========================================================
+    # الأوامر
+    # ========================================================
+
+    application.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "admin",
+            admin
+        )
+    )
+
+    # ========================================================
+    # الصور
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            handle_photo
+        )
+    )
+
+    # ========================================================
+    # الفيديو
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.VIDEO,
+            handle_video
+        )
+    )
+
+    # ========================================================
+    # الصوت
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.AUDIO,
+            handle_audio
+        )
+    )
+
+    # ========================================================
+    # الملفات
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            handle_document
+        )
+    )
+
+    # ========================================================
+    # الرسائل النصية
+    # ========================================================
+
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message
+        )
+    )
+
+    print(
+        "Huda People Bot is running...",
+        flush=True
+    )
+
+    application.run_polling(
+        drop_pending_updates=True
+    )
+
+
+# ============================================================
+# نقطة تشغيل البرنامج
+# ============================================================
+
+if __name__ == "__main__":
+    main()
