@@ -149,11 +149,23 @@ async def show_public_home(
         reply_markup=ReplyKeyboardRemove()
     )
 
-    # إرسال الواجهة الجديدة
-    await update.message.reply_text(
-        "🌿 مرحباً بك في هدى للناس",
-        reply_markup=keyboard
-    )
+    test_keyboard = ReplyKeyboardMarkup(
+    [
+        ["🧪 زر اختبار 1"],
+        ["🧪 زر اختبار 2"],
+        ["🧪 زر اختبار 3"],
+        ["🧪 زر اختبار 4"],
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False,
+    is_persistent=True,
+)
+
+await update.message.reply_text(
+    "🌿 مرحباً بك في هدى للناس\n\n"
+    "اختبار لوحة المفاتيح",
+    reply_markup=test_keyboard
+)
 
 
 # ============================================================
