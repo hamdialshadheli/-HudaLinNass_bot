@@ -66,7 +66,7 @@ from bot.handlers.media_groups import (
 
 
 # ============================================================
-# الإعدادات
+# إعدادات البوت
 # ============================================================
 
 load_dotenv()
@@ -76,38 +76,73 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 
 
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN غير موجود في GitHub Secrets")
+    raise RuntimeError(
+        "BOT_TOKEN غير موجود في GitHub Secrets"
+    )
 
 if not ADMIN_ID:
-    raise RuntimeError("ADMIN_ID غير موجود في GitHub Secrets")
+    raise RuntimeError(
+        "ADMIN_ID غير موجود في GitHub Secrets"
+    )
 
 
 # ============================================================
 # واجهة المستخدم الرئيسية
 # ============================================================
 
-async def show_public_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_public_home(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    is_admin_user = is_admin(update.effective_user.id)
+    user_id = update.effective_user.id
+
+    is_admin_user = is_admin(user_id)
 
     keyboard = user_keyboard(
         is_admin_user=is_admin_user
     )
 
-    # تشخيص لوحة المفاتيح التي يتم إنشاؤها فعلياً
+    print(
+        "========================================",
+        flush=True
+    )
+
+    print(
+        "PUBLIC HOME CALLED",
+        flush=True
+    )
+
+    print(
+        "USER ID:",
+        user_id,
+        flush=True
+    )
+
+    print(
+        "IS ADMIN:",
+        is_admin_user,
+        flush=True
+    )
+
     print(
         "USER KEYBOARD RUNTIME:",
         keyboard.keyboard,
         flush=True
     )
 
-    # إزالة لوحة المفاتيح القديمة
+    print(
+        "========================================",
+        flush=True
+    )
+
+    # إزالة لوحة Telegram القديمة
     await update.message.reply_text(
         "🔄",
         reply_markup=ReplyKeyboardRemove()
     )
 
-    # إرسال واجهة المستخدم الجديدة
+    # إرسال الواجهة الجديدة
     await update.message.reply_text(
         "🌿 مرحباً بك في هدى للناس",
         reply_markup=keyboard
@@ -115,15 +150,58 @@ async def show_public_home(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# أمر /start
+# أمر START
 # ============================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    if update.effective_user:
-        register_user(update.effective_user)
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name or ""
+
+    print(
+        "========================================",
+        flush=True
+    )
+
+    print(
+        "START COMMAND RECEIVED",
+        flush=True
+    )
+
+    print(
+        "USER ID:",
+        user_id,
+        flush=True
+    )
+
+    print(
+        "USER NAME:",
+        user_name,
+        flush=True
+    )
+
+    print(
+        "========================================",
+        flush=True
+    )
+
+    register_user(
+        update.effective_user
+    )
 
     context.user_data.clear()
+
+    # رسالة اختبار للتأكد أن هذه النسخة
+    # هي التي تستقبل أمر /start
+    await update.message.reply_text(
+        "🧪 TEST VERSION\n\n"
+        "إذا ظهرت لك هذه الرسالة، فهذا يعني أن "
+        "نسخة البوت التي تعمل من GitHub هي التي "
+        "استقبلت أمر /start."
+    )
 
     await show_public_home(
         update,
@@ -135,9 +213,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # لوحة الإدارة
 # ============================================================
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
 
         await update.message.reply_text(
             "❌ ليس لديك صلاحية الدخول إلى لوحة الإدارة."
@@ -169,17 +252,25 @@ async def handle_message(
 
     user_id = update.effective_user.id
 
-    register_user(update.effective_user)
+    register_user(
+        update.effective_user
+    )
 
     # ========================================================
-    # واجهة الإدارة
+    # الإدارة
     # ========================================================
 
     if text == "⚙️ الإدارة":
 
         if is_admin(user_id):
-            await admin(update, context)
+
+            await admin(
+                update,
+                context
+            )
+
         else:
+
             await update.message.reply_text(
                 "❌ ليس لديك صلاحية الإدارة."
             )
@@ -230,7 +321,7 @@ async def handle_message(
         return
 
     # ========================================================
-    # إنشاء قائمة رئيسية
+    # إنشاء قائمة
     # ========================================================
 
     if text == "➕ إنشاء قائمة":
@@ -238,7 +329,9 @@ async def handle_message(
         if not is_admin(user_id):
             return
 
-        context.user_data["state"] = "creating_root_menu"
+        context.user_data["state"] = (
+            "creating_root_menu"
+        )
 
         await update.message.reply_text(
             "✏️ أرسل اسم القائمة الرئيسية الجديدة:"
@@ -297,7 +390,9 @@ async def handle_message(
             "◀️ رجوع"
         ])
 
-        context.user_data["state"] = "managing_root_menus"
+        context.user_data["state"] = (
+            "managing_root_menus"
+        )
 
         await update.message.reply_text(
             "📋 القوائم الرئيسية:",
@@ -330,7 +425,9 @@ async def handle_message(
 
             return
 
-        context.user_data["state"] = "creating_child_menu"
+        context.user_data["state"] = (
+            "creating_child_menu"
+        )
 
         await update.message.reply_text(
             "✏️ أرسل اسم الفرع الجديد:"
@@ -421,8 +518,8 @@ async def handle_message(
             return
 
         await update.message.reply_text(
-            "↕️ وظيفة ترتيب العناصر موجودة في النظام، "
-            "وسنختبرها بعد التأكد من عمل الواجهات."
+            "↕️ سيتم اختبار ترتيب العناصر "
+            "بعد التأكد من عمل الواجهات."
         )
 
         return
@@ -507,10 +604,12 @@ async def handle_message(
         return
 
     # ========================================================
-    # الحالات الخاصة بالإدخال
+    # الحالات
     # ========================================================
 
-    state = context.user_data.get("state")
+    state = context.user_data.get(
+        "state"
+    )
 
     # --------------------------------------------------------
     # إنشاء قائمة رئيسية
@@ -595,7 +694,7 @@ async def handle_message(
         return
 
     # --------------------------------------------------------
-    # تعديل المحتوى
+    # تعديل
     # --------------------------------------------------------
 
     if state == "editing_content":
@@ -660,7 +759,7 @@ async def handle_message(
         return
 
     # ========================================================
-    # فتح قائمة موجودة
+    # فتح قائمة
     # ========================================================
 
     if text.startswith("📂 "):
@@ -691,7 +790,7 @@ async def handle_message(
             return
 
     # ========================================================
-    # محاولة فتح محتوى
+    # فتح محتوى
     # ========================================================
 
     await open_content_by_title(
@@ -710,7 +809,9 @@ async def handle_photo(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    state = context.user_data.get("state")
+    state = context.user_data.get(
+        "state"
+    )
 
     if state == "content_photo":
 
@@ -731,7 +832,9 @@ async def handle_video(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    state = context.user_data.get("state")
+    state = context.user_data.get(
+        "state"
+    )
 
     if state == "content_video":
 
@@ -752,147 +855,10 @@ async def handle_audio(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    state = context.user_data.get("state")
+    state = context.user_data.get(
+        "state"
+    )
 
     if state == "content_audio":
 
-        await receive_audio_content(
-            update,
-            context
-        )
-
-        return
-
-
-# ============================================================
-# استقبال الملفات
-# ============================================================
-
-async def handle_document(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    state = context.user_data.get("state")
-
-    if state == "content_document":
-
-        await receive_document_content(
-            update,
-            context
-        )
-
-        return
-
-
-# ============================================================
-# تشغيل البوت
-# ============================================================
-
-def main():
-
-    print(
-        "========================================",
-        flush=True
-    )
-
-    print(
-        "Huda People Bot is starting...",
-        flush=True
-    )
-
-    print(
-        "========================================",
-        flush=True
-    )
-
-    initialize_database()
-
-    application = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .build()
-    )
-
-    # --------------------------------------------------------
-    # /start
-    # --------------------------------------------------------
-
-    application.add_handler(
-        CommandHandler(
-            "start",
-            start
-        )
-    )
-
-    # --------------------------------------------------------
-    # النصوص
-    # --------------------------------------------------------
-
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            handle_message
-        )
-    )
-
-    # --------------------------------------------------------
-    # الصور
-    # --------------------------------------------------------
-
-    application.add_handler(
-        MessageHandler(
-            filters.PHOTO,
-            handle_photo
-        )
-    )
-
-    # --------------------------------------------------------
-    # الفيديو
-    # --------------------------------------------------------
-
-    application.add_handler(
-        MessageHandler(
-            filters.VIDEO,
-            handle_video
-        )
-    )
-
-    # --------------------------------------------------------
-    # الصوت
-    # --------------------------------------------------------
-
-    application.add_handler(
-        MessageHandler(
-            filters.AUDIO | filters.VOICE,
-            handle_audio
-        )
-    )
-
-    # --------------------------------------------------------
-    # الملفات
-    # --------------------------------------------------------
-
-    application.add_handler(
-        MessageHandler(
-            filters.Document.ALL,
-            handle_document
-        )
-    )
-
-    print(
-        "Huda People Bot is running...",
-        flush=True
-    )
-
-    application.run_polling(
-        drop_pending_updates=True
-    )
-
-
-# ============================================================
-# نقطة البداية
-# ============================================================
-
-if __name__ == "__main__":
-    main()
+        await
