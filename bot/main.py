@@ -149,23 +149,27 @@ async def show_public_home(
         reply_markup=ReplyKeyboardRemove()
     )
 
-    test_keyboard = ReplyKeyboardMarkup(
-    [
-        ["🧪 زر اختبار 1"],
-        ["🧪 زر اختبار 2"],
-        ["🧪 زر اختبار 3"],
-        ["🧪 زر اختبار 4"],
-    ],
-    resize_keyboard=True,
-    one_time_keyboard=False,
-    is_persistent=True,
-)
+    # ========================================================
+    # لوحة اختبار مؤقتة
+    # ========================================================
 
-await update.message.reply_text(
-    "🌿 مرحباً بك في هدى للناس\n\n"
-    "اختبار لوحة المفاتيح",
-    reply_markup=test_keyboard
-)
+    test_keyboard = ReplyKeyboardMarkup(
+        [
+            ["🧪 زر اختبار 1"],
+            ["🧪 زر اختبار 2"],
+            ["🧪 زر اختبار 3"],
+            ["🧪 زر اختبار 4"],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True,
+    )
+
+    await update.message.reply_text(
+        "🌿 مرحباً بك في هدى للناس\n\n"
+        "اختبار لوحة المفاتيح",
+        reply_markup=test_keyboard
+    )
 
 
 # ============================================================
@@ -804,7 +808,7 @@ async def handle_message(
             return
 
     # ========================================================
-    # فتح محتوى
+    # فتح المحتوى
     # ========================================================
 
     await open_content_by_title(
