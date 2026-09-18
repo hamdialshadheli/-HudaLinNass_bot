@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 
 from telegram.ext import (
@@ -107,13 +108,20 @@ async def show_public_home(
         is_admin_user=is_admin_user
     )
 
-    # اختبار: معرفة الواجهة التي ينشئها البوت فعليًا
+    # إزالة أي لوحة مفاتيح قديمة من Telegram
+    await update.message.reply_text(
+        "🔄",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+    # طباعة الواجهة للتأكد من النسخة المشغلة
     print(
         "PUBLIC KEYBOARD:",
         keyboard.keyboard,
         flush=True,
     )
 
+    # إرسال الواجهة الجديدة
     await update.message.reply_text(
         "🌿 مرحباً بك في هدى للناس",
         reply_markup=keyboard,
@@ -162,6 +170,13 @@ async def admin(
 
     context.user_data.clear()
 
+    # إزالة أي لوحة مفاتيح قديمة
+    await update.message.reply_text(
+        "🔄",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+    # إرسال لوحة الأدمن
     await update.message.reply_text(
         "⚙️ لوحة تحكم هدى للناس",
         reply_markup=admin_keyboard(),
@@ -734,7 +749,6 @@ async def handle_text(
         # الحالات التي تنتظر إدخال المستخدم
         # =================================================
 
-        # اسم القائمة الرئيسية
         if context.user_data.get(
             "waiting_for_root_name"
         ):
@@ -752,7 +766,6 @@ async def handle_text(
 
             return
 
-        # اسم الفرع
         if context.user_data.get(
             "waiting_for_branch_name"
         ):
@@ -775,7 +788,6 @@ async def handle_text(
 
             return
 
-        # عنوان المحتوى
         if context.user_data.get(
             "waiting_for_content_title"
         ):
@@ -787,7 +799,6 @@ async def handle_text(
 
             return
 
-        # محتوى نص أو رابط
         if context.user_data.get(
             "waiting_for_content_value"
         ):
@@ -814,7 +825,6 @@ async def handle_text(
 
                 return
 
-        # اسم مجموعة الوسائط
         if context.user_data.get(
             "creating_media_group"
         ):
@@ -826,7 +836,6 @@ async def handle_text(
 
             return
 
-        # وصف المجموعة
         if context.user_data.get(
             "waiting_for_group_description"
         ):
@@ -838,7 +847,6 @@ async def handle_text(
 
             return
 
-        # إضافة مشرف
         if context.user_data.get(
             "waiting_for_admin_id"
         ):
@@ -850,7 +858,6 @@ async def handle_text(
 
             return
 
-        # حذف مشرف
         if context.user_data.get(
             "waiting_for_remove_admin_id"
         ):
@@ -862,7 +869,6 @@ async def handle_text(
 
             return
 
-        # تعديل المحتوى
         if context.user_data.get(
             "waiting_for_edit_value"
         ):
@@ -874,7 +880,6 @@ async def handle_text(
 
             return
 
-        # تأكيد الحذف
         if text == "✅ نعم، حذف":
 
             await confirm_delete_content(
@@ -924,7 +929,6 @@ async def handle_media(
     update,
     context,
 ):
-    # مجموعة الوسائط
     if context.user_data.get(
         "waiting_for_group_media"
     ):
@@ -956,7 +960,6 @@ async def handle_media(
 
             return
 
-    # محتوى منفرد
     if not context.user_data.get(
         "waiting_for_content_value"
     ):
