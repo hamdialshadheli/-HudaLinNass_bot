@@ -1,10 +1,28 @@
-from telegram import ReplyKeyboardMarkup
+from telegram import ReplyKeyboardMarkup, KeyboardButton
 
+
+# ==================================================
+# إنشاء لوحة مفاتيح
+# ==================================================
 
 def make_keyboard(rows):
+    keyboard_rows = []
+
+    for row in rows:
+        keyboard_row = []
+
+        for text in row:
+            keyboard_row.append(
+                KeyboardButton(text)
+            )
+
+        keyboard_rows.append(keyboard_row)
+
     return ReplyKeyboardMarkup(
-        rows,
+        keyboard_rows,
         resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True,
     )
 
 
@@ -13,6 +31,7 @@ def make_keyboard(rows):
 # ==================================================
 
 def user_keyboard(is_admin_user=False):
+
     rows = [
         ["📖 القرآن والثقافة"],
         ["📚 الملازم"],
@@ -21,7 +40,9 @@ def user_keyboard(is_admin_user=False):
     ]
 
     if is_admin_user:
-        rows.append(["⚙️ الإدارة"])
+        rows.append(
+            ["⚙️ الإدارة"]
+        )
 
     return make_keyboard(rows)
 
@@ -31,6 +52,7 @@ def user_keyboard(is_admin_user=False):
 # ==================================================
 
 def admin_keyboard():
+
     return make_keyboard([
         ["➕ إنشاء قائمة", "📂 إدارة القوائم"],
         ["➕ إضافة محتوى", "✏️ تعديل المحتوى"],
@@ -45,6 +67,7 @@ def admin_keyboard():
 # ==================================================
 
 def menu_management_keyboard():
+
     return make_keyboard([
         ["➕ إضافة فرع"],
         ["➕ إضافة محتوى", "✏️ تعديل المحتوى"],
@@ -58,6 +81,7 @@ def menu_management_keyboard():
 # ==================================================
 
 def content_type_keyboard():
+
     return make_keyboard([
         ["📝 نص", "🖼️ صورة"],
         ["🎥 فيديو", "🎧 صوت"],
@@ -72,6 +96,7 @@ def content_type_keyboard():
 # ==================================================
 
 def cancel_keyboard():
+
     return make_keyboard([
         ["❌ إلغاء"],
     ])
@@ -82,6 +107,7 @@ def cancel_keyboard():
 # ==================================================
 
 def confirm_delete_keyboard():
+
     return make_keyboard([
         ["✅ نعم، حذف"],
         ["❌ إلغاء"],
@@ -93,6 +119,7 @@ def confirm_delete_keyboard():
 # ==================================================
 
 def back_keyboard():
+
     return make_keyboard([
         ["◀️ رجوع"],
     ])
@@ -103,6 +130,7 @@ def back_keyboard():
 # ==================================================
 
 def menu_navigation_keyboard(items):
+
     rows = []
 
     for item in items:
